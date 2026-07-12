@@ -300,6 +300,13 @@ public partial class RhinoMCPFunctions
             return;
         }
 
+        if (obj is GH_ButtonObject button)
+        {
+            result["special_type"] = "button";
+            result["button_down"] = button.ButtonDown;
+            return;
+        }
+
         if (obj is GH_Panel panel)
         {
             result["special_type"] = "panel";
@@ -580,6 +587,10 @@ public partial class RhinoMCPFunctions
         if (name.Equals("Boolean Toggle", StringComparison.OrdinalIgnoreCase))
         {
             return new GH_BooleanToggle { Value = parameters["value"]?.ToObject<bool>() ?? false };
+        }
+        if (name.Equals("Button", StringComparison.OrdinalIgnoreCase))
+        {
+            return new GH_ButtonObject();
         }
         if (name.Equals("Panel", StringComparison.OrdinalIgnoreCase))
         {

@@ -18,6 +18,7 @@ public partial class RhinoMCPFunctions
         ["Num Slider"] = "Number Slider",
         ["Toggle"] = "Boolean Toggle",
         ["Bool Toggle"] = "Boolean Toggle",
+        ["Push Button"] = "Button",
         ["Text Panel"] = "Panel",
         ["ValueList"] = "Value List",
         ["Add"] = "Addition",

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gh_bake_objects.json",
+  "title": "gh_bake_objects",
+  "description": "Bake selected Grasshopper output into the active Rhino document.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "instance_id": { "$ref": "#/$defs/guid" },
+    "nickname": { "type": "string", "minLength": 1 },
+    "alias": { "type": "string", "minLength": 1 },
+    "graph_id": { "type": "string", "minLength": 1 },
+    "instance_ids": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/guid" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "output_index": { "type": "integer", "minimum": 0 },
+    "output_name": { "type": "string", "minLength": 1 },
+    "layer": { "type": "string", "minLength": 1 },
+    "create_layer_if_missing": { "type": "boolean", "default": false },
+    "recompute": { "type": "boolean", "default": true }
+  },
+  "oneOf": [
+    { "required": ["instance_id"] },
+    { "required": ["nickname"] },
+    { "required": ["alias"] },
+    { "required": ["graph_id"] },
+    { "required": ["instance_ids"] }
+  ],
+  "$defs": {
+    "guid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    }
+  }
+}

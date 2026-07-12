@@ -606,6 +606,110 @@ public partial class RhinoMCPFunctions
                 }
             });
 
+            Record("gh_trigger_button_and_set_toggle", () =>
+            {
+                var button = GhAddComponent(new JObject
+                {
+                    ["component_name"] = "Button",
+                    ["nickname"] = "MCP_Test_Button",
+                    ["position"] = new JArray { 40, 520 }
+                });
+                AddCreatedId(button);
+                var toggle = GhAddComponent(new JObject
+                {
+                    ["component_name"] = "Boolean Toggle",
+                    ["nickname"] = "MCP_Test_Toggle",
+                    ["position"] = new JArray { 40, 600 },
+                    ["value"] = false
+                });
+                AddCreatedId(toggle);
+
+                var pressed = GhTriggerButton(new JObject { ["instance_id"] = button["instance_id"] });
+                if (pressed["pressed"]?.ToObject<bool>() != true ||
+                    pressed["released"]?.ToObject<bool>() != true)
+                {
+                    throw new InvalidOperationException("Grasshopper Button did not complete its press/release cycle.");
+                }
+
+                var toggled = GhSetToggle(new JObject
+                {
+                    ["instance_id"] = toggle["instance_id"],
+                    ["value"] = true
+                });
+                if (toggled["value"]?.ToObject<bool>() != true)
+                {
+                    throw new InvalidOperationException("Grasshopper Boolean Toggle was not set to true.");
+                }
+            });
+
+            Record("gh_bake_objects", () =>
+            {
+                var point = GhAddComponent(new JObject
+                {
+                    ["component_name"] = "Point",
+                    ["nickname"] = "MCP_Test_Bake_Point",
+                    ["position"] = new JArray { 40, 680 }
+                });
+                AddCreatedId(point);
+                GhSetParameterValue(new JObject
+                {
+                    ["instance_id"] = point["instance_id"],
+                    ["value"] = new JArray { 1, 2, 3 }
+                });
+
+                var baked = GhBakeObjects(new JObject
+                {
+                    ["instance_id"] = point["instance_id"],
+                    ["recompute"] = true
+                });
+                if ((baked["baked_count"]?.ToObject<int>() ?? 0) != 1)
+                {
+                    throw new InvalidOperationException("Grasshopper point did not bake exactly one Rhino object.");
+                }
+                foreach (string id in baked["baked_ids"]?.ToObject<List<string>>() ?? new List<string>())
+                {
+                    if (Guid.TryParse(id, out Guid guid))
+                    {
+                        RhinoDoc.ActiveDoc?.Objects.Delete(guid, true);
+                    }
+                }
+                RhinoDoc.ActiveDoc?.Views.Redraw();
+            });
+
+            Record("gh_get_and_set_script_source", () =>
+            {
+                var scriptSpecs = new[]
+                {
+                    new { Guid = "b6ba1144-02d6-4a2d-b53c-ec62e290eeb7", Nickname = "MCP_Test_CSharp", Language = "C#" },
+                    new { Guid = "719467e6-7cf5-4848-99b0-c5dd57e5442c", Nickname = "MCP_Test_Python", Language = "Python 3" }
+                };
+
+                foreach (var spec in scriptSpecs)
+                {
+                    var added = GhAddComponent(new JObject
+                    {
+                        ["component_guid"] = spec.Guid,
+                        ["nickname"] = spec.Nickname
+                    });
+                    AddCreatedId(added);
+                    var original = GhGetScriptSource(new JObject { ["instance_id"] = added["instance_id"] });
+                    string marker = spec.Language == "C#" ? "// MCP source test" : "# MCP source test";
+                    string updatedSource = original["source"]?.ToString() + Environment.NewLine + marker;
+                    GhSetScriptSource(new JObject
+                    {
+                        ["instance_id"] = added["instance_id"],
+                        ["source"] = updatedSource,
+                        ["expected_language"] = spec.Language,
+                        ["recompute"] = true
+                    });
+                    var updated = GhGetScriptSource(new JObject { ["instance_id"] = added["instance_id"] });
+                    if (!updated["source"]!.ToString().Contains(marker, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException($"{spec.Language} script source edit was not persisted.");
+                    }
+                }
+            });
+
             Record("gh_list_components", () =>
             {
                 var components = GhListComponents(new JObject

@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Linq;
 using Grasshopper;
 using Grasshopper.Kernel;
@@ -65,6 +67,206 @@ public partial class RhinoMCPFunctions
             ["message"] = hasDocument
                 ? (created ? "Created Grasshopper document" : "Grasshopper document is available")
                 : "No active Grasshopper document"
+        };
+    }
+
+    [McpCommand("gh_open_document")]
+    public JObject GhOpenDocument(JObject parameters)
+    {
+        string requestedPath = OptionalString(parameters, "path")
+            ?? throw new ArgumentException("path is required.");
+        string path = ValidateGrasshopperFilePath(requestedPath, mustExist: true);
+        bool makeActive = OptionalBool(parameters, "make_active", true);
+        bool openCanvas = OptionalBool(parameters, "open_canvas", true);
+        bool reuseIfOpen = OptionalBool(parameters, "reuse_if_open", true);
+
+        if (openCanvas)
+        {
+            EnsureGrasshopperCanvasOpen();
+            RhinoApp.Wait();
+        }
+
+        var server = Instances.DocumentServer;
+        var existing = Enumerable.Range(0, server.DocumentCount)
+            .Select(index => server[index])
+            .FirstOrDefault(candidate =>
+                !string.IsNullOrWhiteSpace(candidate?.FilePath) &&
+                string.Equals(Path.GetFullPath(candidate.FilePath), path, StringComparison.OrdinalIgnoreCase));
+
+        GH_Document doc;
+        bool opened = false;
+        bool reused = false;
+        if (existing != null)
+        {
+            if (!reuseIfOpen)
+            {
+                throw new InvalidOperationException($"Grasshopper document is already open: {path}");
+            }
+            doc = existing;
+            reused = true;
+        }
+        else
+        {
+            var io = new GH_DocumentIO();
+            if (!io.Open(path) || io.Document == null)
+            {
+                throw new InvalidOperationException($"Grasshopper could not open '{path}'.");
+            }
+            doc = io.Document;
+            server.AddDocument(doc);
+            opened = true;
+        }
+
+        if (makeActive)
+        {
+            server.PromoteDocument(doc);
+            if (Instances.ActiveCanvas != null)
+            {
+                Instances.ActiveCanvas.Document = doc;
+            }
+            RedrawGrasshopperCanvas();
+        }
+
+        return new JObject
+        {
+            ["opened"] = opened,
+            ["reused"] = reused,
+            ["made_active"] = makeActive,
+            ["canvas_open"] = Instances.ActiveCanvas != null,
+            ["file_path"] = doc.FilePath,
+            ["object_count"] = doc.ObjectCount,
+            ["visibility"] = GrasshopperVisibilityState(doc),
+            ["message"] = reused ? "Grasshopper document was already open" : "Opened Grasshopper document"
+        };
+    }
+
+    [McpCommand("gh_save_document")]
+    public JObject GhSaveDocument(JObject parameters)
+    {
+        var doc = GetActiveGrasshopperDocument();
+        return SaveGrasshopperDocument(
+            doc,
+            OptionalString(parameters, "path"),
+            OptionalBool(parameters, "overwrite", false));
+    }
+
+    [McpCommand("gh_close_document")]
+    public JObject GhCloseDocument(JObject parameters)
+    {
+        var doc = GetActiveGrasshopperDocument();
+        string policy = (OptionalString(parameters, "save_changes") ?? "refuse")
+            .Trim()
+            .ToLowerInvariant();
+        if (policy is not ("refuse" or "save" or "discard"))
+        {
+            throw new ArgumentException("save_changes must be 'refuse', 'save', or 'discard'.");
+        }
+
+        string savePath = OptionalString(parameters, "save_path");
+        if (!string.IsNullOrWhiteSpace(savePath) && policy != "save")
+        {
+            throw new ArgumentException("save_path is only valid when save_changes='save'.");
+        }
+
+        bool wasModified = doc.IsModified;
+        bool saved = false;
+        bool discarded = false;
+        JObject saveResult = null;
+        if (policy == "save")
+        {
+            saveResult = SaveGrasshopperDocument(
+                doc,
+                savePath,
+                OptionalBool(parameters, "overwrite", false));
+            saved = true;
+        }
+        else if (wasModified && policy == "refuse")
+        {
+            throw new InvalidOperationException(
+                "The active Grasshopper document has unsaved changes. " +
+                "Use save_changes='save' or save_changes='discard' to close it explicitly.");
+        }
+        else if (wasModified && policy == "discard")
+        {
+            discarded = true;
+        }
+
+        string closedPath = string.IsNullOrWhiteSpace(doc.FilePath) ? "(unsaved)" : doc.FilePath;
+        doc.IsModified = false;
+        var server = Instances.DocumentServer;
+        if (!server.SafeRemoveDocument(doc))
+        {
+            throw new InvalidOperationException("Grasshopper refused to close the active document.");
+        }
+
+        var next = server.NextAvailableDocument();
+        if (next != null)
+        {
+            server.PromoteDocument(next);
+        }
+        if (Instances.ActiveCanvas != null)
+        {
+            Instances.ActiveCanvas.Document = next;
+            RedrawGrasshopperCanvas();
+        }
+
+        return new JObject
+        {
+            ["closed"] = true,
+            ["closed_file_path"] = closedPath,
+            ["had_unsaved_changes"] = wasModified,
+            ["saved"] = saved,
+            ["discarded"] = discarded,
+            ["save_result"] = saveResult,
+            ["remaining_document_count"] = server.DocumentCount,
+            ["active_file_path"] = next == null
+                ? JValue.CreateNull()
+                : next.FilePath ?? "(unsaved)",
+            ["message"] = $"Closed Grasshopper document '{closedPath}'"
+        };
+    }
+
+    private static JObject SaveGrasshopperDocument(GH_Document doc, string requestedPath, bool overwrite)
+    {
+        string currentPath = string.IsNullOrWhiteSpace(doc.FilePath) ? null : Path.GetFullPath(doc.FilePath);
+        string path = requestedPath == null
+            ? currentPath
+            : ValidateGrasshopperFilePath(requestedPath, mustExist: false);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new ArgumentException("path is required when the active Grasshopper document has not been saved before.");
+        }
+
+        bool savingCurrentPath = currentPath != null &&
+            string.Equals(currentPath, path, StringComparison.OrdinalIgnoreCase);
+        if (File.Exists(path) && !savingCurrentPath && !overwrite)
+        {
+            throw new IOException($"File already exists: {path}. Set overwrite=true to replace it.");
+        }
+        string directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+        {
+            throw new DirectoryNotFoundException($"Directory does not exist: {directory}");
+        }
+
+        string previousPath = doc.FilePath;
+        doc.FilePath = path;
+        var io = new GH_DocumentIO(doc);
+        if (!io.Save())
+        {
+            doc.FilePath = previousPath;
+            throw new IOException($"Grasshopper could not save '{path}'.");
+        }
+
+        long byteCount = File.Exists(path) ? new FileInfo(path).Length : 0;
+        return new JObject
+        {
+            ["saved"] = true,
+            ["file_path"] = path,
+            ["format"] = Path.GetExtension(path).TrimStart('.').ToLowerInvariant(),
+            ["bytes"] = byteCount,
+            ["object_count"] = doc.ObjectCount,
+            ["message"] = $"Saved Grasshopper document to '{path}'"
         };
     }
 
@@ -176,5 +378,25 @@ public partial class RhinoMCPFunctions
             ["groups"] = groups,
             ["visibility"] = GrasshopperVisibilityState(doc)
         };
+    }
+
+    private static string ValidateGrasshopperFilePath(string requestedPath, bool mustExist)
+    {
+        if (string.IsNullOrWhiteSpace(requestedPath))
+        {
+            throw new ArgumentException("Grasshopper file path cannot be empty.");
+        }
+        string path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(requestedPath));
+        string extension = Path.GetExtension(path);
+        if (!extension.Equals(".gh", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".ghx", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Grasshopper file path must end in .gh or .ghx.");
+        }
+        if (mustExist && !File.Exists(path))
+        {
+            throw new FileNotFoundException("Grasshopper file was not found.", path);
+        }
+        return path;
     }
 }

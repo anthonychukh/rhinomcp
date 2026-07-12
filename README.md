@@ -238,19 +238,25 @@ pattern with cylinders that have different heights."_
 
 | Tool                                                                  | Purpose                                           |
 | --------------------------------------------------------------------- | ------------------------------------------------- |
-| `gh_create_document` / `gh_get_document_info` / `gh_get_canvas_state` | Document and canvas inspection                    |
+| `gh_create_document` / `gh_open_document` / `gh_save_document` / `gh_close_document` | Create, open, save, and safely close documents |
+| `gh_get_document_info` / `gh_get_canvas_state`                        | Document and canvas inspection                    |
 | `gh_search_components` / `gh_batch_search_components`                 | Search the component library                      |
 | `gh_list_component_categories` / `gh_get_available_components`        | Browse installed components                       |
-| `gh_get_component_type_info` / `gh_get_component_info`                | Inspect a component type or instance              |
+| `gh_get_component_type_info` / `gh_batch_get_component_type_info`     | Inspect one or many component types               |
+| `gh_get_component_info`                                               | Inspect a component instance                      |
 | `gh_list_components`                                                  | List components on the canvas                     |
 | `gh_add_component` / `gh_update_component` / `gh_delete_component`    | Add, update, or delete components                 |
 | `gh_layout_components`                                                | Auto-lay-out the canvas                           |
 | `gh_clear_canvas`                                                     | Clear the canvas                                  |
 | `gh_connect_components` / `gh_disconnect_components`                  | Wire or unwire parameters                         |
 | `gh_set_parameter_value` / `gh_get_parameter_value`                   | Drive inputs, read outputs                        |
+| `gh_trigger_button` / `gh_set_toggle`                                 | Press buttons and operate Boolean Toggles         |
 | `gh_run_solution` / `gh_expire_solution`                              | Solve or expire the solution                      |
 | `gh_build_graph` / `gh_mutate_graph`                                  | Build or mutate a whole graph in one batched call |
 | `gh_get_graph` / `gh_clear_graph`                                     | Inspect or clear objects by graph id              |
+| `gh_bake_objects`                                                     | Bake component or selected output geometry        |
+| `gh_get_script_source` / `gh_set_script_source`                       | Read or edit Rhino 8 C# and Python components     |
+| `gh_capture_preview`                                                  | Capture live Grasshopper preview without baking   |
 
 </details>
 

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gh_close_document.json",
+  "title": "gh_close_document",
+  "description": "Close the active Grasshopper document with an explicit policy for unsaved changes.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "save_changes": {
+      "type": "string",
+      "enum": ["refuse", "save", "discard"],
+      "default": "refuse",
+      "description": "refuse blocks closing a modified document; save persists it first; discard closes without saving."
+    },
+    "save_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\.[gG][hH][xX]?$",
+      "description": "Optional .gh/.ghx destination used only with save_changes=save."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow save_path to replace a different existing file."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["save_path"] },
+      "then": { "properties": { "save_changes": { "const": "save" } }, "required": ["save_changes"] }
+    }
+  ]
+}

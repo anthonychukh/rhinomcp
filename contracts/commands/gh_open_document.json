@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gh_open_document.json",
+  "title": "gh_open_document",
+  "description": "Open a specific Grasshopper .gh or .ghx document and optionally make it active.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": { "type": "string", "minLength": 1, "pattern": "\\.[gG][hH][xX]?$" },
+    "make_active": { "type": "boolean", "default": true },
+    "open_canvas": { "type": "boolean", "default": true },
+    "reuse_if_open": { "type": "boolean", "default": true }
+  },
+  "required": ["path"]
+}

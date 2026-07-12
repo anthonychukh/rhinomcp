@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gh_save_document.json",
+  "title": "gh_save_document",
+  "description": "Save the active Grasshopper document to its current path or a specific .gh/.ghx path.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": { "type": "string", "minLength": 1, "pattern": "\\.[gG][hH][xX]?$" },
+    "overwrite": { "type": "boolean", "default": false }
+  }
+}

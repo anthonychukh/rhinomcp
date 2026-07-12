@@ -457,8 +457,8 @@ To add a command, the implementation must stay in sync across:
 
 ## Command Surface
 
-`contracts/protocol.json` defines 60 command types: 35 Rhino
-commands and 25 Grasshopper commands.
+`contracts/protocol.json` defines 72 command types: 37 Rhino
+commands and 35 Grasshopper commands.
 
 ### Rhino Commands
 
@@ -478,13 +478,16 @@ commands and 25 Grasshopper commands.
 
 | Area                  | Commands                                                                                                                                          |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Document and canvas   | `gh_create_document`, `gh_get_document_info`, `gh_get_canvas_state`, `gh_clear_canvas`                                                            |
-| Component catalog     | `gh_search_components`, `gh_batch_search_components`, `gh_list_component_categories`, `gh_get_available_components`, `gh_get_component_type_info` |
+| Document and canvas   | `gh_create_document`, `gh_open_document`, `gh_save_document`, `gh_close_document`, `gh_get_document_info`, `gh_get_canvas_state`, `gh_clear_canvas`, `gh_capture_preview` |
+| Component catalog     | `gh_search_components`, `gh_batch_search_components`, `gh_list_component_categories`, `gh_get_available_components`, `gh_get_component_type_info`, `gh_batch_get_component_type_info` |
 | Canvas components     | `gh_list_components`, `gh_get_component_info`, `gh_add_component`, `gh_update_component`, `gh_delete_component`, `gh_layout_components`           |
 | Connections           | `gh_connect_components`, `gh_disconnect_components`                                                                                               |
 | Parameters and data   | `gh_set_parameter_value`, `gh_get_parameter_value`                                                                                                |
+| Interactive controls  | `gh_trigger_button`, `gh_set_toggle`                                                                                                              |
 | Solutions             | `gh_run_solution`, `gh_expire_solution`                                                                                                           |
 | Batch graph workflows | `gh_build_graph`, `gh_mutate_graph`, `gh_get_graph`, `gh_clear_graph`                                                                             |
+| Rhino output          | `gh_bake_objects`                                                                                                                                 |
+| Script components     | `gh_get_script_source`, `gh_set_script_source`                                                                                                    |
 
 ## Grasshopper Implementation
 
@@ -501,6 +504,18 @@ document when the command allows it. Batch commands such as `gh_build_graph` and
 
 If Rhino itself is not running or the TCP listener is not active, the Python
 server returns guidance telling the user to start Rhino and run `mcpstart`.
+
+`gh_open_document` loads an existing `.gh` or `.ghx` file without closing other
+open definitions, optionally reuses an already-open matching path, and can make
+the loaded document active. `gh_save_document` saves to the current file path or
+performs a guarded save-as; replacing a different existing file requires
+`overwrite: true`.
+
+`gh_close_document` closes the active definition without an interactive prompt.
+Its default `save_changes: "refuse"` policy blocks closing a modified document.
+Callers must explicitly choose `save` (and provide `save_path` for an unsaved
+definition) or `discard`. After closing, the next available definition is made
+active when one exists.
 
 ### Component Lookup
 
@@ -543,9 +558,22 @@ Single-operation tools exist for straightforward edits and inspection:
 - Set and read parameter values.
 - Run or expire a solution.
 - Lay out canvas objects.
+- Momentarily press standard Button components and set or invert Boolean Toggles.
+- Bake a component, graph, object list, or selected output into Rhino.
+- Read or replace Rhino 8 C# and Python script-component source.
 
 These are useful for small interactions. For larger graph creation or iterative
 edits, prefer the batch APIs below to avoid many slow UI-thread round trips.
+
+Script source access uses Rhino 8's `RhinoCodePlatform.GH.IScriptComponent`
+contract through runtime reflection, avoiding a portable build dependency on a
+machine-local Rhino Code assembly. `gh_set_script_source` can assert an expected
+language before writing and returns post-solve runtime messages.
+
+`gh_bake_objects` uses Grasshopper's `IGH_BakeAwareObject` behavior by default.
+When `output_index` or `output_name` is supplied, it instead bakes only
+`IGH_BakeAwareData` from that output. An optional existing Rhino layer can be
+targeted, or created explicitly with `create_layer_if_missing: true`.
 
 ### `gh_build_graph`
 

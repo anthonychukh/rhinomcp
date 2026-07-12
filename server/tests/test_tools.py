@@ -1595,15 +1595,35 @@ class TestGrasshopperTools:
 
     @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
     def test_gh_document_setup_tool(self, mock_get_conn):
-        from rhinomcp.tools.grasshopper_document import gh_create_document
+        from rhinomcp.tools.grasshopper_document import (
+            gh_create_document,
+            gh_close_document,
+            gh_open_document,
+            gh_save_document,
+        )
 
         mock_conn = MagicMock()
         mock_conn.send_command.return_value = {"success": True}
         mock_get_conn.return_value = mock_conn
 
         gh_create_document(ctx=None, new_if_missing=True, make_active=False, open_canvas=True)
+        gh_open_document(
+            ctx=None,
+            path="C:/Temp/model.gh",
+            make_active=True,
+            open_canvas=False,
+            reuse_if_open=False,
+        )
+        gh_save_document(ctx=None, path="C:/Temp/model-copy.ghx", overwrite=True)
+        gh_close_document(
+            ctx=None,
+            save_changes="save",
+            save_path="C:/Temp/model-final.gh",
+            overwrite=True,
+        )
 
-        mock_conn.send_command.assert_called_once_with(
+        calls = mock_conn.send_command.call_args_list
+        assert calls[0][0] == (
             "gh_create_document",
             {
                 "new_if_missing": True,
@@ -1611,6 +1631,80 @@ class TestGrasshopperTools:
                 "open_canvas": True,
             },
         )
+        assert calls[1][0] == (
+            "gh_open_document",
+            {
+                "path": "C:/Temp/model.gh",
+                "make_active": True,
+                "open_canvas": False,
+                "reuse_if_open": False,
+            },
+        )
+        assert calls[2][0] == (
+            "gh_save_document",
+            {"overwrite": True, "path": "C:/Temp/model-copy.ghx"},
+        )
+        assert calls[3][0] == (
+            "gh_close_document",
+            {
+                "save_changes": "save",
+                "overwrite": True,
+                "save_path": "C:/Temp/model-final.gh",
+            },
+        )
+
+    @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
+    def test_gh_bake_script_and_control_tools(self, mock_get_conn):
+        from rhinomcp.tools.grasshopper_bake import gh_bake_objects
+        from rhinomcp.tools.grasshopper_controls import gh_set_toggle, gh_trigger_button
+        from rhinomcp.tools.grasshopper_scripts import gh_get_script_source, gh_set_script_source
+
+        mock_conn = MagicMock()
+        mock_conn.send_command.return_value = {"success": True}
+        mock_get_conn.return_value = mock_conn
+
+        gh_bake_objects(
+            ctx=None,
+            graph_id="GeneratedGraph",
+            output_index=0,
+            layer="Baked",
+            create_layer_if_missing=True,
+            recompute=False,
+        )
+        gh_get_script_source(ctx=None, nickname="Python")
+        gh_set_script_source(
+            ctx=None,
+            alias="script",
+            source="a = x",
+            expected_language="Python",
+            recompute=True,
+        )
+        gh_trigger_button(ctx=None, instance_id="button-id")
+        gh_set_toggle(ctx=None, nickname="Enabled", value=False)
+
+        calls = mock_conn.send_command.call_args_list
+        assert calls[0][0] == (
+            "gh_bake_objects",
+            {
+                "create_layer_if_missing": True,
+                "recompute": False,
+                "graph_id": "GeneratedGraph",
+                "output_index": 0,
+                "layer": "Baked",
+            },
+        )
+        assert calls[1][0] == ("gh_get_script_source", {"nickname": "Python"})
+        assert calls[2][0] == (
+            "gh_set_script_source",
+            {
+                "source": "a = x",
+                "recompute": True,
+                "alias": "script",
+                "expected_language": "Python",
+            },
+        )
+        assert calls[3][0] == ("gh_trigger_button", {"instance_id": "button-id"})
+        assert calls[4][0] == ("gh_set_toggle", {"nickname": "Enabled", "value": False})
 
     @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
     def test_gh_readonly_discovery_tools(self, mock_get_conn):
@@ -2123,6 +2217,7 @@ class TestToolAnnotations:
             "tools/grasshopper_document.py",
             "tools/grasshopper_graph.py",
             "tools/grasshopper_parameters.py",
+            "tools/grasshopper_scripts.py",
         ]:
             src = self._module_source(rel)
             assert "readOnlyHint=True" in src, f"{rel} missing readOnlyHint annotation"
@@ -2136,6 +2231,10 @@ class TestToolAnnotations:
             "tools/execute_rhinocommon_csharp_code.py",
             "tools/grasshopper_components.py",
             "tools/grasshopper_graph.py",
+            "tools/grasshopper_bake.py",
+            "tools/grasshopper_scripts.py",
+            "tools/grasshopper_document.py",
+            "tools/grasshopper_controls.py",
         ]:
             src = self._module_source(rel)
             assert "destructiveHint=True" in src, f"{rel} missing destructiveHint annotation"
@@ -2165,11 +2264,19 @@ class TestPackageApi:
             "redo",
             "analyze_objects",
             "gh_create_document",
+            "gh_open_document",
+            "gh_save_document",
+            "gh_close_document",
             "gh_get_document_info",
             "gh_search_components",
             "gh_get_graph",
             "gh_clear_graph",
             "gh_capture_preview",
+            "gh_bake_objects",
+            "gh_get_script_source",
+            "gh_set_script_source",
+            "gh_trigger_button",
+            "gh_set_toggle",
             "gh_build_graph",
             "gh_mutate_graph",
             "gh_add_component",

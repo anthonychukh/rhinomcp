@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gh_set_script_source.json",
+  "title": "gh_set_script_source",
+  "description": "Replace source in a Rhino 8 Grasshopper C# or Python script component.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "instance_id": { "$ref": "#/$defs/guid" },
+    "nickname": { "type": "string", "minLength": 1 },
+    "alias": { "type": "string", "minLength": 1 },
+    "source": { "type": "string" },
+    "expected_language": { "type": "string", "minLength": 1 },
+    "recompute": { "type": "boolean", "default": true }
+  },
+  "required": ["source"],
+  "oneOf": [
+    { "required": ["instance_id"] },
+    { "required": ["nickname"] },
+    { "required": ["alias"] }
+  ],
+  "$defs": {
+    "guid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    }
+  }
+}
