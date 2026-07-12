@@ -369,6 +369,9 @@ Main file: `server/src/rhinomcp/server.py`
 | `RHINO_MCP_PORT`         | `1999`            | TCP port.                                                                   |
 | `RHINO_MCP_ALLOW_REMOTE` | unset             | Set to `1` only if accepting unauthenticated remote command execution risk. |
 | `RHINO_MCP_TIMEOUT`      | `15.0`            | Socket timeout in seconds.                                                  |
+| `RHINO_MCP_LONG_TIMEOUT` | `300.0`           | Acknowledgement/fallback timeout for hybrid long-running commands.          |
+| `RHINO_MCP_CONTROL_TIMEOUT` | `15.0`         | Timeout for out-of-band operation status and cancellation calls.            |
+| `RHINO_MCP_HYBRID_WAIT_MS` | `5000`          | Fast-path wait before a hybrid wrapper returns an operation id.              |
 | `RHINO_MCP_PERCEPTION`   | unset             | Set truthy to attach `_delta` (what changed) and `_health` (validity of created geometry) blocks to mutating-command results. |
 | `RHINO_MCP_DEBUG`        | unset             | Enables verbose logging when truthy.                                        |
 | `RHINO_MCP_LOG_LEVEL`    | `INFO` or `DEBUG` | Explicit Python logging level.                                              |
@@ -383,8 +386,13 @@ wrappers are intentionally thin:
 
 ```python
 @mcp.tool()
-def gh_run_solution(ctx: Context, recompute: bool = True) -> Dict[str, Any]:
-    return send_grasshopper_command("gh_run_solution", {"recompute": recompute})
+def gh_run_solution(ctx: Context, expire_all: bool = False, wait_ms: int = 5000) -> Dict[str, Any]:
+    return send_grasshopper_command(
+        "gh_run_solution",
+        {"expire_all": expire_all},
+        hybrid=True,
+        wait_ms=wait_ms,
+    )
 ```
 
 This keeps Rhino and Grasshopper document logic in the C# plugin, where the
@@ -416,6 +424,27 @@ Main files:
 objects, and executes every command through `RhinoApp.InvokeOnUiThread(...)`.
 This is required because RhinoCommon and Grasshopper document APIs must run on
 Rhino's main thread.
+
+### Tracked Operations
+
+Commands carrying an `execution` envelope with `mode: "async"` are acknowledged
+before they enter Rhino's UI queue. A single background worker preserves command
+order and invokes each handler through `RhinoApp.InvokeOnUiThread(...)`; tracked
+execution improves responsiveness but does not run Rhino or Grasshopper work in
+parallel.
+
+`gh_open_document`, `gh_run_solution`, and recomputing parameter, toggle, and
+component updates use a hybrid wrapper by default. They
+wait up to `wait_ms` for the fast case and otherwise return an `operation_id`.
+`get_operation_status` and `cancel_operation` bypass the UI queue, so they still
+respond while Grasshopper is solving or an IO dialog owns the UI thread. On
+Windows, operation status reports a visible modal owned by Rhino as
+`waiting_for_user`; it never dismisses the window automatically.
+
+Each tracked request has a `request_id`. Reusing it returns the existing
+operation instead of executing a timed-out mutation twice. Completed operation
+records are retained for 15 minutes. Cancellation is immediate for queued work
+and cooperative for a running Grasshopper solution.
 
 ### Wire Framing
 
@@ -485,6 +514,7 @@ commands and 35 Grasshopper commands.
 | Parameters and data   | `gh_set_parameter_value`, `gh_get_parameter_value`                                                                                                |
 | Interactive controls  | `gh_trigger_button`, `gh_set_toggle`                                                                                                              |
 | Solutions             | `gh_run_solution`, `gh_expire_solution`                                                                                                           |
+| Tracked operations    | `get_operation_status`, `cancel_operation`                                                                                                        |
 | Batch graph workflows | `gh_build_graph`, `gh_mutate_graph`, `gh_get_graph`, `gh_clear_graph`                                                                             |
 | Rhino output          | `gh_bake_objects`                                                                                                                                 |
 | Script components     | `gh_get_script_source`, `gh_set_script_source`                                                                                                    |
@@ -516,6 +546,10 @@ Its default `save_changes: "refuse"` policy blocks closing a modified document.
 Callers must explicitly choose `save` (and provide `save_path` for an unsaved
 definition) or `discard`. After closing, the next available definition is made
 active when one exists.
+
+Parameter and Boolean Toggle writes accept `recompute: false`. This makes it
+possible to apply several synchronous edits and then trigger one tracked
+`gh_run_solution`, avoiding repeated expensive solutions.
 
 ### Component Lookup
 
@@ -804,6 +838,8 @@ Defined in `plugin/rhinomcp.csproj`:
 - The Python server keeps one persistent TCP connection and serializes sends with
   a lock to avoid request/response interleaving.
 - Rhino and Grasshopper operations run on Rhino's UI thread.
+- Tracked operations are still serialized; the control plane is asynchronous,
+  not the Rhino/Grasshopper execution itself.
 - Read-only C# commands should use `[McpCommand(..., ReadOnly = true)]`.
 - Mutating C# commands get Rhino undo records automatically through the dispatcher.
 - Batch Grasshopper APIs suppress intermediate round trips and solve once when

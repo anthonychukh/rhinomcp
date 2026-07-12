@@ -53,13 +53,16 @@ def gh_add_component(
     decimals: Optional[int] = None,
     content: Optional[str] = None,
     text: Optional[str] = None,
+    recompute: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Add a Grasshopper component to the active canvas.
 
     Provide component_name or component_guid. If both are supplied, the GUID is
     resolved first to avoid ambiguous names.
     """
-    params: Dict[str, Any] = {}
+    params: Dict[str, Any] = {"recompute": recompute}
     if component_name:
         params["component_name"] = component_name
     if component_guid:
@@ -80,7 +83,13 @@ def gh_add_component(
         params["content"] = content
     if text is not None:
         params["text"] = text
-    return send_grasshopper_command("gh_add_component", params)
+    return send_grasshopper_command(
+        "gh_add_component",
+        params,
+        hybrid=recompute,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )
 
 
 @mcp.tool()
@@ -112,14 +121,23 @@ def gh_delete_component(
     ctx: Context,
     instance_id: Optional[str] = None,
     nickname: Optional[str] = None,
+    recompute: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Delete one Grasshopper canvas object."""
-    params: Dict[str, Any] = {}
+    params: Dict[str, Any] = {"recompute": recompute}
     if instance_id:
         params["instance_id"] = instance_id
     if nickname:
         params["nickname"] = nickname
-    return send_grasshopper_command("gh_delete_component", params)
+    return send_grasshopper_command(
+        "gh_delete_component",
+        params,
+        hybrid=recompute,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )
 
 
 @mcp.tool()
@@ -131,9 +149,12 @@ def gh_update_component(
     position: Optional[List[float]] = None,
     enabled: Optional[bool] = None,
     preview: Optional[bool] = None,
+    recompute: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Update basic Grasshopper object metadata, position, enabled state, or preview state."""
-    params: Dict[str, Any] = {}
+    params: Dict[str, Any] = {"recompute": recompute}
     if instance_id:
         params["instance_id"] = instance_id
     if nickname:
@@ -146,7 +167,13 @@ def gh_update_component(
         params["enabled"] = enabled
     if preview is not None:
         params["preview"] = preview
-    return send_grasshopper_command("gh_update_component", params)
+    return send_grasshopper_command(
+        "gh_update_component",
+        params,
+        hybrid=recompute,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))

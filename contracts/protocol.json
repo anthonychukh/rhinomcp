@@ -50,6 +50,8 @@
             "run_command",
             "get_commands",
             "describe_capabilities",
+            "get_operation_status",
+            "cancel_operation",
             "gh_create_document",
             "gh_open_document",
             "gh_save_document",
@@ -90,6 +92,19 @@
         "params": {
           "type": "object",
           "description": "Command-specific parameters"
+        },
+        "execution": {
+          "type": "object",
+          "description": "Optional tracked execution metadata for commands that may outlast a socket request.",
+          "properties": {
+            "mode": { "type": "string", "const": "async" },
+            "request_id": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          "required": ["mode", "request_id"],
+          "additionalProperties": false
         }
       },
       "required": ["type", "params"]

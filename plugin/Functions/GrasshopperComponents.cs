@@ -68,6 +68,7 @@ public partial class RhinoMCPFunctions
     public JObject GhAddComponent(JObject parameters)
     {
         var doc = GetActiveGrasshopperDocument();
+        bool recompute = OptionalBool(parameters, "recompute", true);
         string componentName = OptionalString(parameters, "component_name");
         string componentGuid = OptionalString(parameters, "component_guid") ?? OptionalString(parameters, "guid");
         if (string.IsNullOrEmpty(componentName) && string.IsNullOrEmpty(componentGuid))
@@ -92,7 +93,7 @@ public partial class RhinoMCPFunctions
         }
 
         doc.AddObject(obj, false);
-        RunGrasshopperSolution(doc, false);
+        if (recompute) RunGrasshopperSolution(doc, false);
         RedrawGrasshopperCanvas(position);
 
         return new JObject
@@ -103,6 +104,7 @@ public partial class RhinoMCPFunctions
             ["category"] = obj.Category,
             ["subcategory"] = obj.SubCategory,
             ["position"] = new JArray { position.X, position.Y },
+            ["recomputed"] = recompute,
             ["message"] = $"Added component '{obj.Name}' to canvas"
         };
     }
@@ -152,19 +154,21 @@ public partial class RhinoMCPFunctions
     public JObject GhDeleteComponent(JObject parameters)
     {
         var doc = GetActiveGrasshopperDocument();
+        bool recompute = OptionalBool(parameters, "recompute", true);
         var obj = FindGhObject(doc, parameters);
         string id = obj.InstanceGuid.ToString();
         string name = obj.Name;
         string nickname = obj.NickName;
 
         doc.RemoveObject(obj, false);
-        RunGrasshopperSolution(doc, false);
+        if (recompute) RunGrasshopperSolution(doc, false);
 
         return new JObject
         {
             ["deleted_id"] = id,
             ["name"] = name,
             ["nickname"] = nickname,
+            ["recomputed"] = recompute,
             ["message"] = $"Deleted component '{nickname}' ({name})"
         };
     }
@@ -173,6 +177,7 @@ public partial class RhinoMCPFunctions
     public JObject GhUpdateComponent(JObject parameters)
     {
         var doc = GetActiveGrasshopperDocument();
+        bool recompute = OptionalBool(parameters, "recompute", true);
         var obj = FindGhObject(doc, parameters);
 
         if (parameters["new_nickname"] != null)
@@ -198,7 +203,7 @@ public partial class RhinoMCPFunctions
         }
 
         obj.ExpireSolution(false);
-        RunGrasshopperSolution(doc, false);
+        if (recompute) RunGrasshopperSolution(doc, false);
 
         return new JObject
         {
@@ -206,6 +211,7 @@ public partial class RhinoMCPFunctions
             ["name"] = obj.Name,
             ["nickname"] = obj.NickName,
             ["position"] = PivotToJson(obj),
+            ["recomputed"] = recompute,
             ["message"] = $"Updated component '{obj.NickName}'"
         };
     }

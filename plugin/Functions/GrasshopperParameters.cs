@@ -19,10 +19,12 @@ public partial class RhinoMCPFunctions
         var doc = GetActiveGrasshopperDocument();
         var value = parameters["value"] ?? throw new ArgumentException("value is required.");
         var obj = FindGhObject(doc, parameters);
+        bool recompute = OptionalBool(parameters, "recompute", true);
 
         if (TrySetSpecialComponentValue(obj, value, parameters, out var specialResult))
         {
-            RunGrasshopperSolution(doc, false);
+            if (recompute) RunGrasshopperSolution(doc, false);
+            specialResult["recomputed"] = recompute;
             return specialResult;
         }
 
@@ -36,13 +38,14 @@ public partial class RhinoMCPFunctions
         }
 
         SetParamValue(inputParam, value);
-        RunGrasshopperSolution(doc, false);
+        if (recompute) RunGrasshopperSolution(doc, false);
 
         return new JObject
         {
             ["instance_id"] = obj.InstanceGuid.ToString(),
             ["nickname"] = obj.NickName,
             ["param_name"] = inputParam.Name,
+            ["recomputed"] = recompute,
             ["message"] = $"Set value on {obj.NickName}.{inputParam.Name}"
         };
     }

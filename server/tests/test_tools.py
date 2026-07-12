@@ -1704,7 +1704,10 @@ class TestGrasshopperTools:
             },
         )
         assert calls[3][0] == ("gh_trigger_button", {"instance_id": "button-id"})
-        assert calls[4][0] == ("gh_set_toggle", {"nickname": "Enabled", "value": False})
+        assert calls[4][0] == (
+            "gh_set_toggle",
+            {"recompute": True, "nickname": "Enabled", "value": False},
+        )
 
     @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
     def test_gh_readonly_discovery_tools(self, mock_get_conn):
@@ -1794,6 +1797,104 @@ class TestGrasshopperTools:
                 "nickname": "Circle",
                 "component_ids": ["abc"],
             },
+        )
+
+    @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
+    def test_hybrid_open_can_return_immediately(self, mock_get_conn):
+        from rhinomcp.tools.grasshopper_document import gh_open_document
+
+        operation_id = "12345678-1234-1234-1234-123456789012"
+        request_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        mock_conn = MagicMock()
+        mock_conn.send_command.return_value = {
+            "operation_id": operation_id,
+            "request_id": request_id,
+            "state": "queued",
+            "execution_state": "queued",
+        }
+        mock_get_conn.return_value = mock_conn
+
+        result = gh_open_document(
+            ctx=None,
+            path="C:/Temp/slow.gh",
+            wait_ms=0,
+            request_id=request_id,
+        )
+
+        assert result["operation_id"] == operation_id
+        args, kwargs = mock_conn.send_command.call_args
+        assert args[0] == "gh_open_document"
+        assert args[1]["path"] == "C:/Temp/slow.gh"
+        assert kwargs["timeout"] == 300.0
+        assert kwargs["envelope"]["execution"] == {
+            "mode": "async",
+            "request_id": request_id,
+        }
+
+    @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
+    def test_hybrid_request_id_must_be_uuid(self, mock_get_conn):
+        from rhinomcp.tools.grasshopper_document import gh_open_document
+
+        with pytest.raises(ValueError, match="request_id must be a UUID"):
+            gh_open_document(
+                ctx=None,
+                path="C:/Temp/slow.gh",
+                wait_ms=0,
+                request_id="retry-open",
+            )
+        mock_get_conn.return_value.send_command.assert_not_called()
+
+    @patch("rhinomcp.tools._grasshopper_common.time.sleep", return_value=None)
+    @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
+    def test_hybrid_solution_returns_fast_completion(self, mock_get_conn, _sleep):
+        from rhinomcp.tools.grasshopper_solution import gh_run_solution
+
+        operation_id = "12345678-1234-1234-1234-123456789012"
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = [
+            {
+                "operation_id": operation_id,
+                "state": "queued",
+                "execution_state": "queued",
+            },
+            {
+                "operation_id": operation_id,
+                "state": "completed",
+                "execution_state": "completed",
+                "result": {"success": True, "solution_state": "PostProcess"},
+            },
+        ]
+        mock_get_conn.return_value = mock_conn
+
+        result = gh_run_solution(ctx=None, expire_all=True, wait_ms=5000)
+
+        assert result == {"success": True, "solution_state": "PostProcess"}
+        assert mock_conn.send_command.call_args_list[1][0] == (
+            "get_operation_status",
+            {"operation_id": operation_id, "include_result": True},
+        )
+
+    @patch("rhinomcp.tools.bridge_operations.get_rhino_connection")
+    def test_operation_control_tools(self, mock_get_conn):
+        from rhinomcp.tools.bridge_operations import cancel_operation, get_operation_status
+
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = [
+            {"state": "running"},
+            {"state": "cancel_requested"},
+        ]
+        mock_get_conn.return_value = mock_conn
+
+        get_operation_status(ctx=None, operation_id="op-1", include_result=False)
+        cancel_operation(ctx=None, operation_id="op-1")
+
+        assert mock_conn.send_command.call_args_list[0][0] == (
+            "get_operation_status",
+            {"operation_id": "op-1", "include_result": False},
+        )
+        assert mock_conn.send_command.call_args_list[1][0] == (
+            "cancel_operation",
+            {"operation_id": "op-1"},
         )
 
     @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
@@ -2058,6 +2159,7 @@ class TestGrasshopperTools:
             position=[30, 40],
             enabled=False,
             preview=False,
+            recompute=False,
         )
         gh_layout_components(
             ctx=None,
@@ -2075,6 +2177,7 @@ class TestGrasshopperTools:
         assert calls[0][0] == (
             "gh_add_component",
             {
+                "recompute": True,
                 "position": [10, 20],
                 "component_name": "Number Slider",
                 "nickname": "Radius",
@@ -2087,12 +2190,14 @@ class TestGrasshopperTools:
         assert calls[1][0] == (
             "gh_add_component",
             {
+                "recompute": True,
                 "component_guid": "12345678-1234-1234-1234-123456789012",
             },
         )
         assert calls[2][0] == (
             "gh_add_component",
             {
+                "recompute": True,
                 "component_name": "Panel",
                 "nickname": "AutoPlaced",
             },
@@ -2100,6 +2205,7 @@ class TestGrasshopperTools:
         assert calls[3][0] == (
             "gh_update_component",
             {
+                "recompute": False,
                 "instance_id": "abc",
                 "new_nickname": "Radius2",
                 "position": [30, 40],
@@ -2118,7 +2224,10 @@ class TestGrasshopperTools:
                 "start_position": [20, 30],
             },
         )
-        assert calls[5][0] == ("gh_delete_component", {"nickname": "Radius2"})
+        assert calls[5][0] == (
+            "gh_delete_component",
+            {"recompute": True, "nickname": "Radius2"},
+        )
         assert calls[6][0] == ("gh_clear_canvas", {"include_groups": False, "recompute": True})
         assert calls[7][0] == (
             "gh_clear_graph",
@@ -2146,6 +2255,7 @@ class TestGrasshopperTools:
             source_output_index=0,
             target_nickname="Circle",
             target_input_name="Radius",
+            recompute=False,
         )
         gh_disconnect_components(ctx=None, target_instance_id="dst", disconnect_all=True)
         gh_set_parameter_value(
@@ -2163,6 +2273,7 @@ class TestGrasshopperTools:
         assert calls[0][0] == (
             "gh_connect_components",
             {
+                "recompute": False,
                 "source_instance_id": "src",
                 "source_output_index": 0,
                 "target_nickname": "Circle",
@@ -2171,13 +2282,14 @@ class TestGrasshopperTools:
         )
         assert calls[1][0] == (
             "gh_disconnect_components",
-            {"disconnect_all": True, "target_instance_id": "dst"},
+            {"disconnect_all": True, "recompute": True, "target_instance_id": "dst"},
         )
         assert calls[2][0] == (
             "gh_set_parameter_value",
             {
                 "value": 7.5,
                 "input_index": 0,
+                "recompute": True,
                 "nickname": "Radius",
                 "input_name": "R",
                 "min": 0,

@@ -8,7 +8,7 @@ import threading
 import time
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Dict, Any
+from typing import AsyncIterator, Dict, Any, Optional
 
 from rhinomcp.static.rhinoscriptsyntax import rhinoscriptsyntax_json
 
@@ -30,6 +30,8 @@ if RHINO_HOST not in ("127.0.0.1", "::1", "localhost") and not RHINO_ALLOW_REMOT
         "set RHINO_MCP_ALLOW_REMOTE=1 to acknowledge the risk and proceed."
     )
 RHINO_TIMEOUT = float(os.getenv("RHINO_MCP_TIMEOUT", "15.0"))
+RHINO_LONG_TIMEOUT = float(os.getenv("RHINO_MCP_LONG_TIMEOUT", "300.0"))
+RHINO_CONTROL_TIMEOUT = float(os.getenv("RHINO_MCP_CONTROL_TIMEOUT", "15.0"))
 # Opt-in perception: when enabled, every mutating command carries an
 # `include_delta` flag on the envelope, and the plugin attaches a `_delta` block
 # (created_ids / deleted_ids / count_before / count_after) to the result so a
@@ -116,6 +118,7 @@ READONLY_RETRY_COMMANDS = {
     "gh_get_canvas_state",
     "gh_capture_preview",
     "gh_get_parameter_value",
+    "get_operation_status",
 }
 
 
@@ -190,7 +193,7 @@ class RhinoConnection:
             received.extend(chunk)
         return bytes(received)
 
-    def receive_full_response(self, sock, buffer_size=8192):
+    def receive_full_response(self, sock, buffer_size=8192, timeout: Optional[float] = None):
         """Receive one length-prefixed response frame.
 
         Every message on the wire is a 4-byte big-endian length header followed
@@ -199,7 +202,8 @@ class RhinoConnection:
         bleed into one read, and a frame split across TCP segments is simply
         read until complete.
         """
-        sock.settimeout(RHINO_TIMEOUT)
+        if timeout is not None:
+            sock.settimeout(timeout)
 
         header = self._recv_exact(sock, FRAME_HEADER_SIZE, buffer_size)
         if header.startswith(b"{"):
@@ -224,21 +228,36 @@ class RhinoConnection:
         return payload
 
     def send_command(
-        self, command_type: str, params: Dict[str, Any] = {}
+        self,
+        command_type: str,
+        params: Optional[Dict[str, Any]] = None,
+        *,
+        timeout: Optional[float] = None,
+        envelope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Send a command to Rhino and return the response. Thread-safe: serialized
         across concurrent callers so request/response framing isn't interleaved."""
         with self._send_lock:
-            return self._send_command_locked(command_type, params)
+            return self._send_command_locked(
+                command_type, params or {}, timeout=timeout, envelope=envelope
+            )
 
     def _send_command_locked(
-        self, command_type: str, params: Dict[str, Any] = {}
+        self,
+        command_type: str,
+        params: Optional[Dict[str, Any]] = None,
+        *,
+        timeout: Optional[float] = None,
+        envelope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        params = params or {}
         attempts = 2 if command_type in READONLY_RETRY_COMMANDS else 1
         last_error = None
         for attempt in range(1, attempts + 1):
             try:
-                return self._send_command_once(command_type, params)
+                return self._send_command_once(
+                    command_type, params, timeout=timeout, envelope=envelope
+                )
             except TransientRhinoConnectionError as e:
                 last_error = e
                 if attempt >= attempts:
@@ -255,12 +274,25 @@ class RhinoConnection:
         raise RuntimeError("Rhino command send failed without an error.")
 
     def _send_command_once(
-        self, command_type: str, params: Dict[str, Any] = {}
+        self,
+        command_type: str,
+        params: Optional[Dict[str, Any]] = None,
+        *,
+        timeout: Optional[float] = None,
+        envelope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         if not self.sock and not self.connect():
             raise ConnectionError(rhino_startup_error_message(self.host, self.port))
 
-        command = {"type": command_type, "params": params or {}}
+        params = params or {}
+        command = {"type": command_type, "params": params}
+        if envelope:
+            reserved = {"type", "params"}.intersection(envelope)
+            if reserved:
+                raise ValueError(
+                    f"Envelope metadata cannot override reserved fields: {sorted(reserved)}"
+                )
+            command.update(envelope)
         if RHINO_PERCEPTION:
             # Envelope-level flags, kept out of params so they never collide with a
             # command's own parameters or trip params schema validation. The plugin
@@ -314,7 +346,8 @@ class RhinoConnection:
             logger.debug("Command sent, waiting for response...")
 
             # Set a timeout for receiving
-            self.sock.settimeout(RHINO_TIMEOUT)
+            effective_timeout = RHINO_TIMEOUT if timeout is None else timeout
+            self.sock.settimeout(effective_timeout)
 
             # Receive the response using the improved receive_full_response method
             response_data = self.receive_full_response(self.sock)
@@ -385,12 +418,19 @@ class RhinoConnection:
 
             return result
         except socket.timeout:
-            logger.error("Socket timeout while waiting for response from Rhino")
+            effective_timeout = RHINO_TIMEOUT if timeout is None else timeout
+            logger.error(
+                f"Socket timeout after {effective_timeout:g}s while waiting for "
+                f"Rhino command {command_type}"
+            )
             # Don't try to reconnect here - let the get_rhino_connection handle reconnection
             # Just invalidate the current socket so it will be recreated next time
             self.disconnect()
             raise Exception(
-                "Timeout waiting for Rhino response - try simplifying your request"
+                f"Timeout waiting for Rhino response to '{command_type}' after "
+                f"{effective_timeout:g}s. "
+                "For long Grasshopper work, use the hybrid "
+                "operation mode and poll get_operation_status."
             )
         except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
             logger.error(f"Socket connection error: {str(e)}")

@@ -19,9 +19,12 @@ def gh_connect_components(
     target_nickname: Optional[str] = None,
     target_input_index: Optional[int] = None,
     target_input_name: Optional[str] = None,
+    recompute: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Connect one Grasshopper output parameter to one input parameter."""
-    params: Dict[str, Any] = {}
+    params: Dict[str, Any] = {"recompute": recompute}
     if source_instance_id:
         params["source_instance_id"] = source_instance_id
     if source_nickname:
@@ -38,7 +41,13 @@ def gh_connect_components(
         params["target_input_index"] = target_input_index
     if target_input_name:
         params["target_input_name"] = target_input_name
-    return send_grasshopper_command("gh_connect_components", params)
+    return send_grasshopper_command(
+        "gh_connect_components",
+        params,
+        hybrid=recompute,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )
 
 
 @mcp.tool()
@@ -53,9 +62,15 @@ def gh_disconnect_components(
     target_input_index: Optional[int] = None,
     target_input_name: Optional[str] = None,
     disconnect_all: bool = False,
+    recompute: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Disconnect one Grasshopper wire, or all sources from a target input."""
-    params: Dict[str, Any] = {"disconnect_all": disconnect_all}
+    params: Dict[str, Any] = {
+        "disconnect_all": disconnect_all,
+        "recompute": recompute,
+    }
     if source_instance_id:
         params["source_instance_id"] = source_instance_id
     if source_nickname:
@@ -72,4 +87,10 @@ def gh_disconnect_components(
         params["target_input_index"] = target_input_index
     if target_input_name:
         params["target_input_name"] = target_input_name
-    return send_grasshopper_command("gh_disconnect_components", params)
+    return send_grasshopper_command(
+        "gh_disconnect_components",
+        params,
+        hybrid=recompute,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )

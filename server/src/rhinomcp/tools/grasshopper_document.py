@@ -34,8 +34,14 @@ def gh_open_document(
     make_active: bool = True,
     open_canvas: bool = True,
     reuse_if_open: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Open a specific .gh or .ghx file in Grasshopper."""
+    """Open a .gh/.ghx file, returning an operation if loading stays busy.
+
+    Set ``wait_ms`` to zero to return an operation id immediately. Reuse an
+    optional ``request_id`` when retrying to prevent duplicate opens.
+    """
     return send_grasshopper_command(
         "gh_open_document",
         {
@@ -44,6 +50,9 @@ def gh_open_document(
             "open_canvas": open_canvas,
             "reuse_if_open": reuse_if_open,
         },
+        hybrid=True,
+        wait_ms=wait_ms,
+        request_id=request_id,
     )
 
 

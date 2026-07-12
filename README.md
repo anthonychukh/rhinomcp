@@ -252,6 +252,7 @@ pattern with cylinders that have different heights."_
 | `gh_set_parameter_value` / `gh_get_parameter_value`                   | Drive inputs, read outputs                        |
 | `gh_trigger_button` / `gh_set_toggle`                                 | Press buttons and operate Boolean Toggles         |
 | `gh_run_solution` / `gh_expire_solution`                              | Solve or expire the solution                      |
+| `get_operation_status` / `cancel_operation`                           | Poll or cancel tracked long-running work          |
 | `gh_build_graph` / `gh_mutate_graph`                                  | Build or mutate a whole graph in one batched call |
 | `gh_get_graph` / `gh_clear_graph`                                     | Inspect or clear objects by graph id              |
 | `gh_bake_objects`                                                     | Bake component or selected output geometry        |
@@ -259,6 +260,14 @@ pattern with cylinders that have different heights."_
 | `gh_capture_preview`                                                  | Capture live Grasshopper preview without baking   |
 
 </details>
+
+`gh_open_document`, `gh_run_solution`, and recomputing parameter/toggle/component
+updates use hybrid execution: they return the
+normal result when they finish quickly, or an `operation_id` when loading or
+solving continues. Poll with `get_operation_status`; on Windows it also reports
+recognized Rhino-owned modal windows as `waiting_for_user`. Grasshopper work is
+still serialized on Rhino's UI thread. Set `recompute=false` on parameter or
+toggle edits to batch changes before one explicit solution.
 
 ## How it works
 
@@ -292,6 +301,9 @@ authentication.
 | `RHINO_MCP_ENABLE_CSHARP`      | `1`         | Set `0` to disable RhinoCommon C# execution.                                  |
 | `RHINO_MCP_VALIDATE`           | `warn`      | Pre-flight schema validation: `off` / `warn` / `strict`.                      |
 | `RHINO_MCP_TIMEOUT`            | `15.0`      | Socket timeout in seconds.                                                    |
+| `RHINO_MCP_LONG_TIMEOUT`       | `300.0`     | Initial acknowledgement budget for tracked long-running commands; also supports older plugins that execute synchronously. |
+| `RHINO_MCP_CONTROL_TIMEOUT`    | `15.0`      | Timeout for operation status and cancellation calls, which bypass Rhino's UI queue. |
+| `RHINO_MCP_HYBRID_WAIT_MS`     | `5000`      | How long open/solve tools wait for a fast result before returning an operation id. |
 | `RHINO_MCP_DEBUG`              | `0`         | Verbose logging.                                                              |
 
 </details>

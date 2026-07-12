@@ -694,6 +694,43 @@ class TestSendCommand:
         assert conn.sock is None
 
     @patch("socket.socket")
+    def test_send_command_supports_envelope_metadata_and_custom_timeout(
+        self, mock_socket_class
+    ):
+        """Execution metadata stays outside params and the receive budget is per call."""
+        from rhinomcp.server import RhinoConnection
+
+        mock_sock = MagicMock()
+        mock_socket_class.return_value = mock_sock
+        response = {
+            "status": "success",
+            "result": {"operation_id": "12345678-1234-1234-1234-123456789012"},
+        }
+        mock_sock.recv.side_effect = buffered_recv(
+            frame(json.dumps(response).encode("utf-8"))
+        )
+
+        conn = RhinoConnection(host="127.0.0.1", port=1999)
+        result = conn.send_command(
+            "gh_run_solution",
+            {"expire_all": True},
+            timeout=7.5,
+            envelope={
+                "execution": {
+                    "mode": "async",
+                    "request_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                }
+            },
+        )
+
+        assert result["operation_id"] == "12345678-1234-1234-1234-123456789012"
+        sent_data = mock_sock.sendall.call_args[0][0]
+        sent_command = json.loads(sent_data[4:].decode("utf-8"))
+        assert sent_command["params"] == {"expire_all": True}
+        assert sent_command["execution"]["mode"] == "async"
+        mock_sock.settimeout.assert_called_with(7.5)
+
+    @patch("socket.socket")
     def test_send_command_not_connected(self, mock_socket_class):
         """Test sending command when not connected."""
         from rhinomcp.server import RhinoConnection

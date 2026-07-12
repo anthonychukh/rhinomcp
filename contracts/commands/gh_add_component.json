@@ -27,7 +27,8 @@
     "max": { "type": "number" },
     "decimals": { "type": "integer", "minimum": 0, "maximum": 12 },
     "content": { "type": "string" },
-    "text": { "type": "string" }
+    "text": { "type": "string" },
+    "recompute": { "type": "boolean", "default": true }
   },
   "anyOf": [
     { "required": ["component_name"] },

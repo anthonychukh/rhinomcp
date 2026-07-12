@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "operation_status.json",
+  "title": "Tracked operation status",
+  "type": "object",
+  "properties": {
+    "operation_id": { "type": "string", "format": "uuid" },
+    "request_id": { "type": "string", "format": "uuid" },
+    "command": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "string",
+      "enum": ["queued", "running", "waiting_for_user", "cancel_requested", "cancelled", "completed", "failed"]
+    },
+    "execution_state": {
+      "type": "string",
+      "enum": ["queued", "running", "cancel_requested", "cancelled", "completed", "failed"]
+    },
+    "terminal": { "type": "boolean" },
+    "created_at_utc": { "type": "string", "format": "date-time" },
+    "started_at_utc": { "type": ["string", "null"], "format": "date-time" },
+    "completed_at_utc": { "type": ["string", "null"], "format": "date-time" },
+    "elapsed_ms": { "type": "integer", "minimum": 0 },
+    "message": { "type": "string" },
+    "modal_detected": { "type": "boolean" },
+    "modal": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "window_class": { "type": "string" }
+          },
+          "required": ["title", "window_class"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "error": { "type": "string" },
+    "result": { "type": "object" }
+  },
+  "required": [
+    "operation_id",
+    "request_id",
+    "command",
+    "state",
+    "execution_state",
+    "terminal",
+    "created_at_utc",
+    "started_at_utc",
+    "completed_at_utc",
+    "elapsed_ms",
+    "message",
+    "modal_detected",
+    "modal"
+  ],
+  "additionalProperties": false
+}

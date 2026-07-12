@@ -18,7 +18,8 @@
       "maxItems": 2
     },
     "enabled": { "type": "boolean" },
-    "preview": { "type": "boolean" }
+    "preview": { "type": "boolean" },
+    "recompute": { "type": "boolean", "default": true }
   },
   "allOf": [
     {

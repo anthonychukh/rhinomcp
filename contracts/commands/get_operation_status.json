@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_operation_status.json",
+  "title": "get_operation_status",
+  "description": "Poll a tracked Rhino operation without waiting for Rhino's UI thread.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "operation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "include_result": { "type": "boolean", "default": true }
+  },
+  "required": ["operation_id"]
+}

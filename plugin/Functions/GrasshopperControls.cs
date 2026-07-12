@@ -55,9 +55,10 @@ public partial class RhinoMCPFunctions
         }
 
         bool previous = toggle.Value;
+        bool recompute = OptionalBool(parameters, "recompute", true);
         toggle.Value = parameters["value"]?.ToObject<bool>() ?? !previous;
         toggle.ExpireSolution(true);
-        RunGrasshopperSolution(doc, false);
+        if (recompute) RunGrasshopperSolution(doc, false);
         RedrawGrasshopperCanvas();
 
         return new JObject
@@ -66,6 +67,7 @@ public partial class RhinoMCPFunctions
             ["nickname"] = toggle.NickName,
             ["previous_value"] = previous,
             ["value"] = toggle.Value,
+            ["recomputed"] = recompute,
             ["message"] = $"Set toggle '{toggle.NickName}' to {toggle.Value}"
         };
     }

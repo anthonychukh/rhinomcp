@@ -66,6 +66,14 @@ public partial class RhinoMCPFunctions
             {
                 ["description"] = "Mutating commands accept opt-in envelope flags that attach extra feedback to the result. Set them per command on the envelope, or globally with the RHINO_MCP_PERCEPTION server setting.",
                 ["envelope_flags"] = envelopeFlags
+            },
+            ["operations"] = new JObject
+            {
+                ["description"] = "Commands may be submitted with execution.mode='async'. Rhino acknowledges them before UI-thread execution and tracks the result by operation_id.",
+                ["envelope_field"] = "execution",
+                ["status_command"] = "get_operation_status",
+                ["cancel_command"] = "cancel_operation",
+                ["serialized_ui_execution"] = true
             }
         };
     }

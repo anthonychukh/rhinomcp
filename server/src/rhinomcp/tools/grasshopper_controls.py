@@ -34,9 +34,12 @@ def gh_set_toggle(
     nickname: Optional[str] = None,
     alias: Optional[str] = None,
     value: Optional[bool] = None,
+    recompute: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Set a standard Grasshopper Boolean Toggle, or invert it when value is omitted."""
-    params: Dict[str, Any] = {}
+    """Set a Boolean Toggle value, optionally deferring recomputation."""
+    params: Dict[str, Any] = {"recompute": recompute}
     if instance_id is not None:
         params["instance_id"] = instance_id
     if nickname is not None:
@@ -45,4 +48,10 @@ def gh_set_toggle(
         params["alias"] = alias
     if value is not None:
         params["value"] = value
-    return send_grasshopper_command("gh_set_toggle", params)
+    return send_grasshopper_command(
+        "gh_set_toggle",
+        params,
+        hybrid=recompute,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )

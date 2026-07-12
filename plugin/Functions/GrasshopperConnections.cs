@@ -10,6 +10,7 @@ public partial class RhinoMCPFunctions
     public JObject GhConnectComponents(JObject parameters)
     {
         var doc = GetActiveGrasshopperDocument();
+        bool recompute = OptionalBool(parameters, "recompute", true);
         var sourceObj = FindGhObject(doc, parameters, "source_");
         var targetObj = FindGhObject(doc, parameters, "target_");
 
@@ -34,7 +35,7 @@ public partial class RhinoMCPFunctions
         inputParam.AddSource(outputParam);
         EnsureParamHasData(outputParam);
         targetObj.ExpireSolution(true);
-        RunGrasshopperSolution(doc, false);
+        if (recompute) RunGrasshopperSolution(doc, false);
 
         return new JObject
         {
@@ -44,6 +45,7 @@ public partial class RhinoMCPFunctions
             ["target_id"] = targetObj.InstanceGuid.ToString(),
             ["target_nickname"] = targetObj.NickName,
             ["target_param"] = inputParam.Name,
+            ["recomputed"] = recompute,
             ["message"] = $"Connected {sourceObj.NickName}.{outputParam.Name} to {targetObj.NickName}.{inputParam.Name}"
         };
     }
@@ -52,6 +54,7 @@ public partial class RhinoMCPFunctions
     public JObject GhDisconnectComponents(JObject parameters)
     {
         var doc = GetActiveGrasshopperDocument();
+        bool recompute = OptionalBool(parameters, "recompute", true);
         bool disconnectAll = OptionalBool(parameters, "disconnect_all", false);
         var targetObj = FindGhObject(doc, parameters, "target_");
         var inputParam = FindInputParam(
@@ -84,7 +87,7 @@ public partial class RhinoMCPFunctions
         }
 
         targetObj.ExpireSolution(true);
-        RunGrasshopperSolution(doc, false);
+        if (recompute) RunGrasshopperSolution(doc, false);
 
         return new JObject
         {
@@ -92,6 +95,7 @@ public partial class RhinoMCPFunctions
             ["target_nickname"] = targetObj.NickName,
             ["target_param"] = inputParam.Name,
             ["disconnected_count"] = disconnectedCount,
+            ["recomputed"] = recompute,
             ["message"] = disconnectedCount > 0
                 ? $"Disconnected {disconnectedCount} connection(s) from {targetObj.NickName}.{inputParam.Name}"
                 : "No connections were disconnected"

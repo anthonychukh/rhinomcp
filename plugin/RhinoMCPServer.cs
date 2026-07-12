@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -45,8 +46,17 @@ namespace RhinoMCPPlugin
         private bool running;
         private TcpListener listener;
         private Thread serverThread;
+        private Thread operationThread;
+        private readonly ConcurrentQueue<QueuedBridgeOperation> operationQueue = new();
+        private readonly AutoResetEvent operationSignal = new(false);
         private readonly object lockObject = new object();
         private RhinoMCPFunctions handler;
+
+        private sealed class QueuedBridgeOperation
+        {
+            public BridgeOperation Operation { get; init; }
+            public JObject Command { get; init; }
+        }
 
         public RhinoMCPServer(string host = "127.0.0.1", int port = 1999)
         {
@@ -83,6 +93,14 @@ namespace RhinoMCPPlugin
                 serverThread = new Thread(ServerLoop);
                 serverThread.IsBackground = true;
                 serverThread.Start();
+
+                // Potentially long commands are acknowledged immediately and
+                // executed one-at-a-time by this worker. The worker still invokes
+                // the actual handler on Rhino's UI thread; it only decouples socket
+                // waiting from UI execution and never runs Grasshopper in parallel.
+                operationThread = new Thread(OperationLoop);
+                operationThread.IsBackground = true;
+                operationThread.Start();
 
                 RhinoApp.WriteLine($"RhinoMCP server started on {host}:{port}");
             }
@@ -126,6 +144,21 @@ namespace RhinoMCPPlugin
                     // Ignore errors on join
                 }
                 serverThread = null;
+            }
+
+            operationSignal.Set();
+            if (operationThread != null && operationThread.IsAlive)
+            {
+                try
+                {
+                    operationThread.Join(1000);
+                }
+                catch
+                {
+                    // A modal may still own the UI thread. The operation thread is
+                    // background-only and will not keep Rhino alive.
+                }
+                operationThread = null;
             }
 
             RhinoApp.WriteLine("RhinoMCP server stopped");
@@ -351,6 +384,55 @@ namespace RhinoMCPPlugin
 
         private void DispatchCommand(JObject command, NetworkStream stream, bool framed)
         {
+            string cmdType = command["type"]?.ToString();
+
+            // These control-plane reads intentionally bypass Rhino's UI thread so
+            // they remain available while Grasshopper is solving or showing a modal.
+            if (cmdType is "get_operation_status" or "cancel_operation")
+            {
+                try
+                {
+                    JObject response = ExecuteOperationControlCommand(command);
+                    WriteMessage(stream, JsonConvert.SerializeObject(response), framed);
+                }
+                catch (Exception e)
+                {
+                    WriteMessage(stream, new JObject
+                    {
+                        ["status"] = "error",
+                        ["message"] = e.Message
+                    }.ToString(), framed);
+                }
+                return;
+            }
+
+            JObject execution = command["execution"] as JObject;
+            if (string.Equals(execution?["mode"]?.ToString(), "async", StringComparison.OrdinalIgnoreCase))
+            {
+                string requestId = execution?["request_id"]?.ToString();
+                var registration = BridgeOperationRegistry.GetOrCreate(cmdType, requestId);
+                JObject accepted = new JObject
+                {
+                    ["status"] = "success",
+                    ["result"] = registration.Operation.ToJson(includeResult: true)
+                };
+
+                // Acknowledge before touching the UI thread. This is the key
+                // guarantee that prevents a modal or long solution from consuming
+                // the socket timeout.
+                WriteMessage(stream, JsonConvert.SerializeObject(accepted), framed);
+                if (registration.Created)
+                {
+                    operationQueue.Enqueue(new QueuedBridgeOperation
+                    {
+                        Operation = registration.Operation,
+                        Command = (JObject)command.DeepClone()
+                    });
+                    operationSignal.Set();
+                }
+                return;
+            }
+
             // Execute command on Rhino's main thread. Posts are processed in
             // order, so pipelined framed commands get their responses in the
             // order the commands were sent.
@@ -389,6 +471,56 @@ namespace RhinoMCPPlugin
                     }
                 }
             }));
+        }
+
+        private JObject ExecuteOperationControlCommand(JObject command)
+        {
+            string cmdType = command["type"]?.ToString();
+            JObject parameters = command["params"] as JObject ?? new JObject();
+            string operationId = parameters["operation_id"]?.ToString();
+            JObject result = cmdType == "cancel_operation"
+                ? BridgeOperationRegistry.Cancel(operationId)
+                : BridgeOperationRegistry.GetStatus(
+                    operationId,
+                    parameters["include_result"]?.ToObject<bool>() ?? true);
+            return new JObject
+            {
+                ["status"] = "success",
+                ["result"] = result
+            };
+        }
+
+        private void OperationLoop()
+        {
+            while (IsRunning() || !operationQueue.IsEmpty)
+            {
+                if (!operationQueue.TryDequeue(out QueuedBridgeOperation queued))
+                {
+                    operationSignal.WaitOne(250);
+                    continue;
+                }
+
+                if (!queued.Operation.TryStart()) continue;
+                try
+                {
+                    RhinoApp.InvokeOnUiThread(new Action(() =>
+                    {
+                        JObject response = ExecuteCommand(queued.Command);
+                        if (response?["status"]?.ToString() == "success")
+                        {
+                            queued.Operation.Complete(response["result"] as JObject ?? new JObject());
+                        }
+                        else
+                        {
+                            queued.Operation.Fail(response?["message"]?.ToString() ?? "Unknown Rhino operation error");
+                        }
+                    }));
+                }
+                catch (Exception e)
+                {
+                    queued.Operation.Fail(e.Message);
+                }
+            }
         }
 
         private static void WriteMessage(NetworkStream stream, string json, bool framed)

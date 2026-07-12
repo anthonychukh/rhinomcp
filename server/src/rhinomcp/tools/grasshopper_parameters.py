@@ -20,9 +20,16 @@ def gh_set_parameter_value(
     min: Optional[float] = None,
     max: Optional[float] = None,
     decimals: Optional[int] = None,
+    recompute: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Set a slider, toggle, panel, value list, or regular input parameter value."""
-    params: Dict[str, Any] = {"value": value, "input_index": input_index}
+    """Set a parameter value, optionally deferring the Grasshopper solution."""
+    params: Dict[str, Any] = {
+        "value": value,
+        "input_index": input_index,
+        "recompute": recompute,
+    }
     if instance_id:
         params["instance_id"] = instance_id
     if nickname:
@@ -35,7 +42,13 @@ def gh_set_parameter_value(
         params["max"] = max
     if decimals is not None:
         params["decimals"] = decimals
-    return send_grasshopper_command("gh_set_parameter_value", params)
+    return send_grasshopper_command(
+        "gh_set_parameter_value",
+        params,
+        hybrid=recompute,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))

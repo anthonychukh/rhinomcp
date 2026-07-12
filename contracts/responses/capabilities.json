@@ -66,6 +66,19 @@
       },
       "required": ["description", "envelope_flags"],
       "additionalProperties": false
+    },
+    "operations": {
+      "type": "object",
+      "description": "Tracked execution support for commands that may outlast a socket request.",
+      "properties": {
+        "description": { "type": "string" },
+        "envelope_field": { "type": "string" },
+        "status_command": { "type": "string" },
+        "cancel_command": { "type": "string" },
+        "serialized_ui_execution": { "type": "boolean" }
+      },
+      "required": ["description", "envelope_field", "status_command", "cancel_command", "serialized_ui_execution"],
+      "additionalProperties": false
     }
   },
   "required": ["version", "command_count", "commands", "perception"],

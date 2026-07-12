@@ -12,9 +12,17 @@ from rhinomcp.tools._grasshopper_common import send_grasshopper_command
 def gh_run_solution(
     ctx: Context,
     expire_all: bool = False,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run a Grasshopper solution and report runtime warnings/errors."""
-    return send_grasshopper_command("gh_run_solution", {"expire_all": expire_all})
+    """Run a solution, returning a tracked operation when it outlasts wait_ms."""
+    return send_grasshopper_command(
+        "gh_run_solution",
+        {"expire_all": expire_all},
+        hybrid=True,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )
 
 
 @mcp.tool()

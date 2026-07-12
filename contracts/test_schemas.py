@@ -245,6 +245,8 @@ def test_new_commands():
         ("commands/section_profile.json", {"object_ids": [GUID], "plane": {"origin": [0, 0, 0], "normal": [0, 0, 1]}}),
         ("commands/section_profile.json", {"selected": True, "profile": {"axis": "X", "count": 10}}),
         ("commands/section_profile.json", {"name": "Wall", "profile": {"axis": "Z", "count": 5, "start": 0, "end": 30}}),
+        ("commands/get_operation_status.json", {"operation_id": GUID, "include_result": True}),
+        ("commands/cancel_operation.json", {"operation_id": GUID}),
         ("commands/gh_create_document.json", {"new_if_missing": True, "make_active": True, "open_canvas": True}),
         ("commands/gh_open_document.json", {"path": "C:/Temp/example.gh", "make_active": True, "open_canvas": True}),
         ("commands/gh_save_document.json", {"path": "C:/Temp/example.ghx", "overwrite": True}),
@@ -286,7 +288,7 @@ def test_new_commands():
             "rollback_on_error": True,
             "open_canvas": True
         }),
-        ("commands/gh_add_component.json", {"component_guid": GUID, "nickname": "ByGuid"}),
+        ("commands/gh_add_component.json", {"component_guid": GUID, "nickname": "ByGuid", "recompute": False}),
         ("commands/gh_mutate_graph.json", {
             "graph_id": "TestGraph",
             "operations": [
@@ -333,8 +335,8 @@ def test_new_commands():
         ("commands/gh_add_component.json", {"component_name": "Number Slider", "position": [20, 40], "nickname": "Radius", "value": 5, "min": 0, "max": 10}),
         ("commands/gh_delete_component.json", {"nickname": "Radius"}),
         ("commands/gh_layout_components.json", {"component_ids": [GUID], "start_position": [40, 40], "x_spacing": 220, "y_spacing": 90, "recompute": True}),
-        ("commands/gh_connect_components.json", {"source_instance_id": GUID, "source_output_index": 0, "target_instance_id": GUID, "target_input_name": "Radius"}),
-        ("commands/gh_disconnect_components.json", {"target_instance_id": GUID, "target_input_index": 0, "disconnect_all": True}),
+        ("commands/gh_connect_components.json", {"source_instance_id": GUID, "source_output_index": 0, "target_instance_id": GUID, "target_input_name": "Radius", "recompute": False}),
+        ("commands/gh_disconnect_components.json", {"target_instance_id": GUID, "target_input_index": 0, "disconnect_all": True, "recompute": False}),
         ("commands/gh_set_parameter_value.json", {"nickname": "Radius", "value": 7.5, "input_index": 0}),
         ("commands/gh_get_parameter_value.json", {"instance_id": GUID, "output_index": 0, "max_items": 10}),
         ("commands/gh_update_component.json", {"instance_id": GUID, "new_nickname": "Radius2", "position": [100, 200], "preview": False}),
@@ -505,6 +507,25 @@ def test_responses():
             print(f"  FAIL: capabilities accepted invalid payload {bad}")
             all_passed = False
     print("  capabilities negatives correctly rejected")
+
+    print("  operation_status:")
+    operation_status = {
+        "operation_id": "12345678-1234-1234-1234-123456789012",
+        "request_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "command": "gh_open_document",
+        "state": "waiting_for_user",
+        "execution_state": "running",
+        "terminal": False,
+        "created_at_utc": "2026-07-12T12:00:00Z",
+        "started_at_utc": "2026-07-12T12:00:00Z",
+        "completed_at_utc": None,
+        "elapsed_ms": 15000,
+        "message": "Rhino is showing a modal window that may require user attention",
+        "modal_detected": True,
+        "modal": {"title": "Grasshopper", "window_class": "#32770"}
+    }
+    if not validate("responses/operation_status.json", operation_status):
+        all_passed = False
 
     # Layer info
     print("  layer_info:")
@@ -824,6 +845,8 @@ def test_invalid_examples():
         ("commands/section_profile.json", {"id": "12345678-1234-1234-1234-123456789012", "profile": {"axis": "Z", "count": 1}}, "section_profile profile count too low"),
         ("commands/section_profile.json", {"id": "12345678-1234-1234-1234-123456789012", "profile": {"axis": "Z", "count": 200}}, "section_profile profile count too high"),
         ("commands/section_profile.json", {"id": "12345678-1234-1234-1234-123456789012", "plane": {"axis": "Z", "value": 0}, "bogus": 1}, "section_profile unknown field"),
+        ("commands/get_operation_status.json", {}, "get_operation_status missing id"),
+        ("commands/cancel_operation.json", {"operation_id": "bad"}, "cancel_operation bad id"),
         ("commands/gh_create_document.json", {"template_path": "example.gh"}, "gh_create_document unknown field"),
         ("commands/gh_open_document.json", {"path": "example.txt"}, "gh_open_document wrong extension"),
         ("commands/gh_save_document.json", {"path": ""}, "gh_save_document empty path"),
@@ -1023,7 +1046,7 @@ def test_protocol_envelope():
         "boolean_union", "boolean_difference", "boolean_intersection",
         "loft", "extrude_curve", "sweep1", "offset_curve", "pipe",
         "project_curve", "intersect_curves", "split_curve",
-        "run_command", "get_commands",
+        "run_command", "get_commands", "get_operation_status", "cancel_operation",
         "gh_create_document",
         "gh_open_document", "gh_save_document", "gh_close_document",
         "gh_get_document_info", "gh_search_components",

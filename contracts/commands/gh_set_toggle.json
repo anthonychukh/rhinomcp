@@ -9,7 +9,8 @@
     "instance_id": { "$ref": "#/$defs/guid" },
     "nickname": { "type": "string", "minLength": 1 },
     "alias": { "type": "string", "minLength": 1 },
-    "value": { "type": "boolean" }
+    "value": { "type": "boolean" },
+    "recompute": { "type": "boolean", "default": true }
   },
   "oneOf": [
     { "required": ["instance_id"] },

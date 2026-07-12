@@ -18,7 +18,8 @@
     },
     "target_nickname": { "type": "string", "minLength": 1 },
     "target_input_index": { "type": "integer", "minimum": 0 },
-    "target_input_name": { "type": "string", "minLength": 1 }
+    "target_input_name": { "type": "string", "minLength": 1 },
+    "recompute": { "type": "boolean", "default": true }
   },
   "allOf": [
     {

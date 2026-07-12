@@ -15,7 +15,8 @@
     "input_name": { "type": "string", "minLength": 1 },
     "min": { "type": "number" },
     "max": { "type": "number" },
-    "decimals": { "type": "integer", "minimum": 0, "maximum": 12 }
+    "decimals": { "type": "integer", "minimum": 0, "maximum": 12 },
+    "recompute": { "type": "boolean", "default": true }
   },
   "required": ["value"],
   "oneOf": [
