@@ -731,6 +731,40 @@ class TestSendCommand:
         mock_sock.settimeout.assert_called_with(7.5)
 
     @patch("socket.socket")
+    def test_pending_ui_operation_uses_operation_status_contract(
+        self, mock_socket_class
+    ):
+        """A late synchronous result remains a successful, trackable response."""
+        from rhinomcp.server import RhinoConnection
+
+        mock_sock = MagicMock()
+        mock_socket_class.return_value = mock_sock
+        pending = {
+            "operation_id": "12345678-1234-1234-1234-123456789012",
+            "request_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "process_id": 1234,
+            "command": "get_document_summary",
+            "state": "queued",
+            "execution_state": "queued",
+            "terminal": False,
+            "created_at_utc": "2026-07-13T00:00:00Z",
+            "started_at_utc": None,
+            "completed_at_utc": None,
+            "elapsed_ms": 5000,
+            "message": "Rhino accepted the request but its UI thread is still busy.",
+            "modal_detected": False,
+            "modal": None,
+            "poll_after_ms": 500,
+        }
+        response = {"status": "success", "result": pending}
+        mock_sock.recv.side_effect = buffered_recv(
+            frame(json.dumps(response).encode("utf-8"))
+        )
+
+        conn = RhinoConnection(host="127.0.0.1", port=1999)
+        assert conn.send_command("get_document_summary", {}) == pending
+
+    @patch("socket.socket")
     def test_send_command_not_connected(self, mock_socket_class):
         """Test sending command when not connected."""
         from rhinomcp.server import RhinoConnection

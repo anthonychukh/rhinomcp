@@ -1,11 +1,12 @@
 """Grasshopper live preview capture tools."""
 
 import base64
+import json
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import Context, Image
 
-from rhinomcp.server import logger, mcp
+from rhinomcp.server import is_operation_status, logger, mcp
 from rhinomcp.tools._grasshopper_common import send_grasshopper_command
 
 
@@ -49,6 +50,11 @@ def gh_capture_preview(
         params["targets"] = targets
 
     result = send_grasshopper_command("gh_capture_preview", params)
+    if is_operation_status(result):
+        raise RuntimeError(
+            "Grasshopper preview capture is pending; poll get_operation_status: "
+            + json.dumps(result)
+        )
     image_data = base64.b64decode(result["image_data"])
     logger.info(
         "Captured Grasshopper preview '%s' (%sx%s, %s preview objects)",

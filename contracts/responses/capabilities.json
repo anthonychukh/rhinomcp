@@ -26,7 +26,7 @@
           },
           "read_only": {
             "type": "boolean",
-            "description": "True if the command does not mutate the document (no undo record)."
+            "description": "True if the command is introspective and does not mutate Rhino or Grasshopper state."
           }
         },
         "required": ["name", "read_only"],
@@ -75,6 +75,9 @@
         "envelope_field": { "type": "string" },
         "status_command": { "type": "string" },
         "cancel_command": { "type": "string" },
+        "health_command": { "type": "string" },
+        "shutdown_command": { "type": "string" },
+        "sync_wait_ms": { "type": "integer", "minimum": 0 },
         "serialized_ui_execution": { "type": "boolean" }
       },
       "required": ["description", "envelope_field", "status_command", "cancel_command", "serialized_ui_execution"],

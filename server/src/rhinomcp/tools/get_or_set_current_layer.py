@@ -1,5 +1,6 @@
 from mcp.server.fastmcp import Context
-from rhinomcp.server import get_rhino_connection, mcp, logger
+import json
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp, logger
 
 @mcp.tool()
 def get_or_set_current_layer(
@@ -37,9 +38,10 @@ def get_or_set_current_layer(
 
         # Create the layer
         result = rhino.send_command("get_or_set_current_layer", command_params)  
-        
+        if is_operation_status(result):
+            return json.dumps(result, indent=2)
+
         return f"Current layer: {result['name']}"
     except Exception as e:
         logger.error(f"Error getting or setting current layer: {str(e)}")
         return f"Error getting or setting current layer: {str(e)}"
- 

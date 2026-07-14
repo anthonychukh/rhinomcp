@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "shutdown_rhino.json",
+  "title": "shutdown_rhino",
+  "description": "Prepare Rhino and Grasshopper documents, acknowledge shutdown, then exit Rhino.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "save_changes": {
+      "type": "string",
+      "enum": ["refuse", "save", "discard"],
+      "default": "refuse"
+    },
+    "force_after_ms": {
+      "oneOf": [
+        { "const": 0 },
+        { "type": "integer", "minimum": 1000, "maximum": 60000 }
+      ],
+      "default": 15000
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_bridge_health.json",
+  "title": "get_bridge_health",
+  "description": "Read bridge, UI-thread, Grasshopper, modal, queue, and shutdown state without dispatching to Rhino's UI thread.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

@@ -10,7 +10,7 @@ These tools provide a simple, hallucination-free interface for:
 """
 
 from mcp.server.fastmcp import Context
-from rhinomcp.server import get_rhino_connection, mcp, logger
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp, logger
 from typing import List, Optional, Dict, Any
 
 
@@ -55,6 +55,8 @@ def loft(
             params["name"] = name
 
         result = rhino.send_command("loft", params)
+        if is_operation_status(result):
+            return result
         return {
             "success": True,
             "result_ids": result.get("result_ids", []),
@@ -104,6 +106,8 @@ def extrude_curve(
             params["name"] = name
 
         result = rhino.send_command("extrude_curve", params)
+        if is_operation_status(result):
+            return result
         return {
             "success": True,
             "result_id": result.get("result_id"),
@@ -154,6 +158,8 @@ def sweep1(
             params["name"] = name
 
         result = rhino.send_command("sweep1", params)
+        if is_operation_status(result):
+            return result
         return {
             "success": True,
             "result_ids": result.get("result_ids", []),
@@ -204,6 +210,8 @@ def offset_curve(
             params["plane"] = plane
 
         result = rhino.send_command("offset_curve", params)
+        if is_operation_status(result):
+            return result
         return {
             "success": True,
             "result_ids": result.get("result_ids", []),
@@ -256,6 +264,8 @@ def pipe(
             params["name"] = name
 
         result = rhino.send_command("pipe", params)
+        if is_operation_status(result):
+            return result
         return {
             "success": True,
             "result_ids": result.get("result_ids", []),

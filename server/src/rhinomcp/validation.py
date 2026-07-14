@@ -189,6 +189,7 @@ def validate_response(command_type: str, response: Dict[str, Any], raise_on_erro
         "describe_capabilities": "capabilities.json",
         "get_operation_status": "operation_status.json",
         "cancel_operation": "operation_status.json",
+        "get_bridge_health": "bridge_health.json",
     }
 
     schema_name = response_schema_map.get(command_type)

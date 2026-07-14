@@ -1897,6 +1897,91 @@ class TestGrasshopperTools:
             {"operation_id": "op-1"},
         )
 
+    @patch("rhinomcp.tools.lifecycle.get_rhino_connection")
+    def test_bridge_health_bypasses_ui_queue(self, mock_get_conn):
+        from rhinomcp.tools.lifecycle import get_bridge_health
+
+        mock_conn = MagicMock()
+        mock_conn.send_command.return_value = {"state": "rhino_ui_busy"}
+        mock_get_conn.return_value = mock_conn
+
+        assert get_bridge_health(ctx=None)["state"] == "rhino_ui_busy"
+        mock_conn.send_command.assert_called_once_with(
+            "get_bridge_health", {}, timeout=15.0
+        )
+
+    @patch("rhinomcp.tools.lifecycle._process_is_alive", return_value=True)
+    @patch("rhinomcp.tools.lifecycle.get_rhino_connection")
+    def test_shutdown_returns_acknowledgement_without_waiting(
+        self, mock_get_conn, _process_alive
+    ):
+        from rhinomcp.tools.lifecycle import shutdown_rhino
+
+        operation_id = "12345678-1234-1234-1234-123456789012"
+        request_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        mock_conn = MagicMock()
+        mock_conn.send_command.return_value = {
+            "operation_id": operation_id,
+            "request_id": request_id,
+            "process_id": 4321,
+            "state": "queued",
+            "execution_state": "queued",
+        }
+        mock_get_conn.return_value = mock_conn
+
+        result = shutdown_rhino(
+            ctx=None,
+            save_changes="discard",
+            wait_for_exit_ms=0,
+            request_id=request_id,
+        )
+
+        assert result["shutdown_state"] == "shutdown_accepted"
+        assert result["operation_id"] == operation_id
+        args, kwargs = mock_conn.send_command.call_args
+        assert args == (
+            "shutdown_rhino",
+            {"save_changes": "discard", "force_after_ms": 15000},
+        )
+        assert kwargs["envelope"]["execution"] == {
+            "mode": "async",
+            "request_id": request_id,
+        }
+
+    @patch(
+        "rhinomcp.tools.lifecycle._process_is_alive",
+        side_effect=[True, False],
+    )
+    @patch("rhinomcp.tools.lifecycle.get_rhino_connection")
+    def test_shutdown_treats_process_exit_as_expected_disconnect(
+        self, mock_get_conn, _process_alive
+    ):
+        from rhinomcp.tools.lifecycle import shutdown_rhino
+
+        operation_id = "12345678-1234-1234-1234-123456789012"
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = [
+            {
+                "operation_id": operation_id,
+                "request_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "process_id": 4321,
+                "state": "queued",
+                "execution_state": "queued",
+            },
+            {
+                "operation_id": operation_id,
+                "state": "completed",
+                "execution_state": "completed",
+                "result": {"shutdown_accepted": True, "process_id": 4321},
+            },
+        ]
+        mock_get_conn.return_value = mock_conn
+
+        result = shutdown_rhino(ctx=None, wait_for_exit_ms=1000)
+
+        assert result["shutdown_state"] == "expected_disconnect"
+        assert result["process_alive"] is False
+
     @patch("rhinomcp.tools._grasshopper_common.get_rhino_connection")
     def test_gh_capture_preview_tool(self, mock_get_conn):
         import base64

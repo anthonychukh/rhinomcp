@@ -1,5 +1,6 @@
 from mcp.server.fastmcp import Context
-from rhinomcp.server import get_rhino_connection, mcp, logger
+import json
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp, logger
 from typing import Any, List, Dict, Optional
 
 
@@ -51,6 +52,8 @@ def select_objects(
         }
 
         result = rhino.send_command("select_objects", command_params)
+        if is_operation_status(result):
+            return json.dumps(result, indent=2)
           
         return f"Selected {result['count']} objects"
     except Exception as e:

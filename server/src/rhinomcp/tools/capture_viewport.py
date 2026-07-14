@@ -1,6 +1,7 @@
 from mcp.server.fastmcp import Context, Image
 import base64
-from rhinomcp.server import get_rhino_connection, mcp, logger
+import json
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp, logger
 
 
 # Not marked readOnly: zoom_to_fit=True and projection-view changes mutate the
@@ -70,6 +71,11 @@ def capture_viewport(
         }
 
         result = rhino.send_command("capture_viewport", params)
+        if is_operation_status(result):
+            raise RuntimeError(
+                "Viewport capture is pending; poll get_operation_status: "
+                + json.dumps(result)
+            )
 
         # Decode base64 image data
         image_data = base64.b64decode(result["image_data"])

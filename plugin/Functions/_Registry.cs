@@ -15,11 +15,13 @@ public partial class RhinoMCPFunctions
     {
         public readonly Func<JObject, JObject> Handler;
         public readonly bool ReadOnly;
+        public readonly bool Undoable;
 
-        public DispatchEntry(Func<JObject, JObject> handler, bool readOnly)
+        public DispatchEntry(Func<JObject, JObject> handler, bool readOnly, bool undoable)
         {
             Handler = handler;
             ReadOnly = readOnly;
+            Undoable = undoable;
         }
     }
 
@@ -50,7 +52,7 @@ public partial class RhinoMCPFunctions
                 throw new InvalidOperationException(
                     $"Duplicate [McpCommand(\"{attr.Name}\")] on {method.Name}.");
             }
-            table[attr.Name] = new DispatchEntry(handler, attr.ReadOnly);
+            table[attr.Name] = new DispatchEntry(handler, attr.ReadOnly, attr.Undoable);
         }
 
         _dispatchTable = table;

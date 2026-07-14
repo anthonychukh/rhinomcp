@@ -73,6 +73,13 @@ public partial class RhinoMCPFunctions
                 ["envelope_field"] = "execution",
                 ["status_command"] = "get_operation_status",
                 ["cancel_command"] = "cancel_operation",
+                ["health_command"] = "get_bridge_health",
+                ["shutdown_command"] = "shutdown_rhino",
+                ["sync_wait_ms"] = int.TryParse(
+                    System.Environment.GetEnvironmentVariable("RHINO_MCP_SYNC_WAIT_MS"),
+                    out int syncWait)
+                        ? Math.Max(250, Math.Min(14000, syncWait))
+                        : 5000,
                 ["serialized_ui_execution"] = true
             }
         };

@@ -52,6 +52,8 @@
             "describe_capabilities",
             "get_operation_status",
             "cancel_operation",
+            "get_bridge_health",
+            "shutdown_rhino",
             "gh_create_document",
             "gh_open_document",
             "gh_save_document",
@@ -95,7 +97,7 @@
         },
         "execution": {
           "type": "object",
-          "description": "Optional tracked execution metadata for commands that may outlast a socket request.",
+          "description": "Optional tracked execution metadata for UI-thread commands. Reusing request_id makes retries idempotent.",
           "properties": {
             "mode": { "type": "string", "const": "async" },
             "request_id": {

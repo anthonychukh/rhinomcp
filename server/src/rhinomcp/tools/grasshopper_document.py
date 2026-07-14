@@ -15,8 +15,10 @@ def gh_create_document(
     new_if_missing: bool = True,
     make_active: bool = True,
     open_canvas: bool = True,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Create or activate a Grasshopper document for subsequent canvas commands."""
+    """Create or activate a Grasshopper document through a tracked operation."""
     return send_grasshopper_command(
         "gh_create_document",
         {
@@ -24,6 +26,9 @@ def gh_create_document(
             "make_active": make_active,
             "open_canvas": open_canvas,
         },
+        hybrid=True,
+        wait_ms=wait_ms,
+        request_id=request_id,
     )
 
 
@@ -61,12 +66,20 @@ def gh_save_document(
     ctx: Context,
     path: Optional[str] = None,
     overwrite: bool = False,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Save the active Grasshopper document, optionally to a .gh or .ghx path."""
     params: Dict[str, Any] = {"overwrite": overwrite}
     if path is not None:
         params["path"] = path
-    return send_grasshopper_command("gh_save_document", params)
+    return send_grasshopper_command(
+        "gh_save_document",
+        params,
+        hybrid=True,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True))
@@ -75,6 +88,8 @@ def gh_close_document(
     save_changes: Literal["refuse", "save", "discard"] = "refuse",
     save_path: Optional[str] = None,
     overwrite: bool = False,
+    wait_ms: int = 5000,
+    request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Close the active Grasshopper document with explicit modified-file handling.
 
@@ -88,7 +103,13 @@ def gh_close_document(
     }
     if save_path is not None:
         params["save_path"] = save_path
-    return send_grasshopper_command("gh_close_document", params)
+    return send_grasshopper_command(
+        "gh_close_document",
+        params,
+        hybrid=True,
+        wait_ms=wait_ms,
+        request_id=request_id,
+    )
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))

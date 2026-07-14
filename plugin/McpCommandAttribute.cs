@@ -15,11 +15,17 @@ public sealed class McpCommandAttribute : Attribute
     public string Name { get; }
 
     /// <summary>
-    /// If true, the dispatcher does not wrap the handler in a Rhino undo record.
-    /// Use for purely introspective commands (get_*, undo, redo, capture_viewport).
+    /// If true, the command is introspective and the dispatcher does not create
+    /// a Rhino undo record.
     /// Settable so call sites can use named-argument syntax: [McpCommand("foo", ReadOnly = true)].
     /// </summary>
     public bool ReadOnly { get; set; }
+
+    /// <summary>
+    /// If false, a mutating command is not wrapped in a Rhino document undo record.
+    /// Lifecycle operations such as process shutdown are mutating but cannot be undone.
+    /// </summary>
+    public bool Undoable { get; set; } = true;
 
     public McpCommandAttribute(string name)
     {

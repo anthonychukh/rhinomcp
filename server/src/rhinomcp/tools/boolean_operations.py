@@ -1,5 +1,7 @@
 from mcp.server.fastmcp import Context
-from rhinomcp.server import get_rhino_connection, mcp, logger
+import json
+
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp, logger
 from typing import List, Optional
 
 
@@ -33,6 +35,8 @@ def boolean_union(
             params["name"] = name
 
         result = rhino.send_command("boolean_union", params)
+        if is_operation_status(result):
+            return json.dumps(result, indent=2)
         return f"{result['message']}. Result IDs: {result['result_ids']}"
     except Exception as e:
         logger.error(f"Error in boolean union: {str(e)}")
@@ -72,6 +76,8 @@ def boolean_difference(
             params["name"] = name
 
         result = rhino.send_command("boolean_difference", params)
+        if is_operation_status(result):
+            return json.dumps(result, indent=2)
         return f"{result['message']}. Result IDs: {result['result_ids']}"
     except Exception as e:
         logger.error(f"Error in boolean difference: {str(e)}")
@@ -108,6 +114,8 @@ def boolean_intersection(
             params["name"] = name
 
         result = rhino.send_command("boolean_intersection", params)
+        if is_operation_status(result):
+            return json.dumps(result, indent=2)
         return f"{result['message']}. Result IDs: {result['result_ids']}"
     except Exception as e:
         logger.error(f"Error in boolean intersection: {str(e)}")

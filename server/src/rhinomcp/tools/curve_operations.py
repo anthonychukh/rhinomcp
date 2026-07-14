@@ -8,7 +8,7 @@ These tools provide interfaces for:
 """
 
 from mcp.server.fastmcp import Context
-from rhinomcp.server import get_rhino_connection, mcp, logger
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp, logger
 from typing import List, Optional, Dict, Any
 
 
@@ -48,6 +48,8 @@ def project_curve(
             params["name"] = name
 
         result = rhino.send_command("project_curve", params)
+        if is_operation_status(result):
+            return result
         return {
             "success": True,
             "result_ids": result.get("result_ids", []),
@@ -90,6 +92,8 @@ def intersect_curves(
             params["name"] = name
 
         result = rhino.send_command("intersect_curves", params)
+        if is_operation_status(result):
+            return result
         return {
             "success": True,
             "point_ids": result.get("point_ids", []),
@@ -141,6 +145,8 @@ def split_curve(
             params["name"] = name
 
         result = rhino.send_command("split_curve", params)
+        if is_operation_status(result):
+            return result
         return {
             "success": True,
             "result_ids": result.get("result_ids", []),

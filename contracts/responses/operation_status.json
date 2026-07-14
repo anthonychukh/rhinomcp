@@ -6,6 +6,7 @@
   "properties": {
     "operation_id": { "type": "string", "format": "uuid" },
     "request_id": { "type": "string", "format": "uuid" },
+    "process_id": { "type": "integer", "minimum": 1 },
     "command": { "type": "string", "minLength": 1 },
     "state": {
       "type": "string",
@@ -36,12 +37,14 @@
         }
       ]
     },
+    "poll_after_ms": { "type": "integer", "minimum": 0 },
     "error": { "type": "string" },
     "result": { "type": "object" }
   },
   "required": [
     "operation_id",
     "request_id",
+    "process_id",
     "command",
     "state",
     "execution_state",

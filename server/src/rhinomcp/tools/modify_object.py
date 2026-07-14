@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import Context
-from rhinomcp.server import get_rhino_connection, mcp
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp
 from typing import Any, List, Dict, Optional
 
 
@@ -46,6 +46,8 @@ def modify_object(
     if visible is not None: params["visible"] = visible
 
     result = rhino.send_command("modify_object", params)
+    if is_operation_status(result):
+        return result
     response: Dict[str, Any] = {
         "success": True,
         "id": result.get("id"),

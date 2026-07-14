@@ -1,8 +1,10 @@
 import os
+import json
 
 from mcp.server.fastmcp import Context
 from mcp.types import ToolAnnotations
 from rhinomcp import get_rhino_connection, mcp, logger
+from rhinomcp.server import is_operation_status
 
 
 def _enabled() -> bool:
@@ -43,6 +45,8 @@ def run_command(ctx: Context, command: str, echo: bool = False) -> str:
     try:
         rhino = get_rhino_connection()
         result = rhino.send_command("run_command", {"command": command, "echo": echo})
+        if is_operation_status(result):
+            return json.dumps(result, indent=2)
         output = (result.get("output") or "").strip()
         success = bool(result.get("success", False))
 

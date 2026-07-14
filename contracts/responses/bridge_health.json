@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bridge_health.json",
+  "title": "RhinoMCP bridge health",
+  "type": "object",
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": [
+        "listener_started",
+        "rhino_ui_busy",
+        "grasshopper_loading",
+        "grasshopper_ready",
+        "shutdown_in_progress",
+        "blocked_by_modal"
+      ]
+    },
+    "listener_started": { "type": "boolean" },
+    "listener_started_at_utc": { "type": "string", "format": "date-time" },
+    "process_id": { "type": "integer", "minimum": 1 },
+    "rhino_ui_responsive": { "type": "boolean" },
+    "last_ui_heartbeat_utc": { "type": ["string", "null"], "format": "date-time" },
+    "ui_heartbeat_age_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "grasshopper_ready": { "type": "boolean" },
+    "shutdown_in_progress": { "type": "boolean" },
+    "shutdown_state": { "type": "string" },
+    "queued_operation_count": { "type": "integer", "minimum": 0 },
+    "current_operation": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "operation_status.json" }
+      ]
+    },
+    "modal_detected": { "type": "boolean" },
+    "modal": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "window_class": { "type": "string" }
+          },
+          "required": ["title", "window_class"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": [
+    "state",
+    "listener_started",
+    "listener_started_at_utc",
+    "process_id",
+    "rhino_ui_responsive",
+    "last_ui_heartbeat_utc",
+    "ui_heartbeat_age_ms",
+    "grasshopper_ready",
+    "shutdown_in_progress",
+    "shutdown_state",
+    "queued_operation_count",
+    "current_operation",
+    "modal_detected",
+    "modal"
+  ],
+  "additionalProperties": false
+}

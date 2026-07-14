@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -33,6 +34,9 @@ namespace RhinoMCPPlugin
         // open with ('{' or whitespace), so the sniff is unambiguous.
         private const int FrameHeaderSize = 4;
         private const int MaxFrameSize = 64 * 1024 * 1024;
+        private const int UiBusyThresholdMilliseconds = 2000;
+        private static readonly int SyncWaitMilliseconds = ReadBoundedEnvironmentInteger(
+            "RHINO_MCP_SYNC_WAIT_MS", 5000, 250, 14000);
 
         private enum ClientProtocol
         {
@@ -50,7 +54,12 @@ namespace RhinoMCPPlugin
         private readonly ConcurrentQueue<QueuedBridgeOperation> operationQueue = new();
         private readonly AutoResetEvent operationSignal = new(false);
         private readonly object lockObject = new object();
+        private readonly object healthLock = new object();
         private RhinoMCPFunctions handler;
+        private BridgeOperation currentOperation;
+        private DateTime listenerStartedAtUtc;
+        private DateTime? lastUiHeartbeatUtc;
+        private bool grasshopperReady;
 
         private sealed class QueuedBridgeOperation
         {
@@ -80,6 +89,9 @@ namespace RhinoMCPPlugin
                 }
 
                 running = true;
+                listenerStartedAtUtc = DateTime.UtcNow;
+                lastUiHeartbeatUtc = null;
+                grasshopperReady = false;
             }
 
             try
@@ -102,6 +114,8 @@ namespace RhinoMCPPlugin
                 operationThread.IsBackground = true;
                 operationThread.Start();
 
+                RhinoApp.Idle += OnRhinoIdle;
+
                 RhinoApp.WriteLine($"RhinoMCP server started on {host}:{port}");
             }
             catch (Exception e)
@@ -117,6 +131,8 @@ namespace RhinoMCPPlugin
             {
                 running = false;
             }
+
+            RhinoApp.Idle -= OnRhinoIdle;
 
             // Close listener
             if (listener != null)
@@ -388,7 +404,7 @@ namespace RhinoMCPPlugin
 
             // These control-plane reads intentionally bypass Rhino's UI thread so
             // they remain available while Grasshopper is solving or showing a modal.
-            if (cmdType is "get_operation_status" or "cancel_operation")
+            if (cmdType is "get_operation_status" or "cancel_operation" or "get_bridge_health")
             {
                 try
                 {
@@ -406,11 +422,52 @@ namespace RhinoMCPPlugin
                 return;
             }
 
-            JObject execution = command["execution"] as JObject;
-            if (string.Equals(execution?["mode"]?.ToString(), "async", StringComparison.OrdinalIgnoreCase))
+            // Capability discovery is reflection-only. Keeping it off the UI queue
+            // lets clients distinguish a live bridge from a busy Rhino UI thread.
+            if (cmdType == "describe_capabilities")
             {
-                string requestId = execution?["request_id"]?.ToString();
-                var registration = BridgeOperationRegistry.GetOrCreate(cmdType, requestId);
+                try
+                {
+                    WriteMessage(stream, new JObject
+                    {
+                        ["status"] = "success",
+                        ["result"] = handler.DescribeCapabilities(new JObject())
+                    }.ToString(), framed);
+                }
+                catch (Exception e)
+                {
+                    WriteMessage(stream, new JObject
+                    {
+                        ["status"] = "error",
+                        ["message"] = e.Message
+                    }.ToString(), framed);
+                }
+                return;
+            }
+
+            if (RhinoShutdownLifecycle.IsShutdownInProgress && cmdType != "shutdown_rhino")
+            {
+                WriteMessage(stream, new JObject
+                {
+                    ["status"] = "error",
+                    ["message"] = "Rhino shutdown is already in progress. Only bridge health and operation status are available."
+                }.ToString(), framed);
+                return;
+            }
+
+            JObject execution = command["execution"] as JObject;
+            bool asynchronous = string.Equals(
+                execution?["mode"]?.ToString(),
+                "async",
+                StringComparison.OrdinalIgnoreCase);
+            string requestId = execution?["request_id"]?.ToString();
+            var registration = BridgeOperationRegistry.GetOrCreate(
+                cmdType,
+                requestId,
+                command);
+
+            if (asynchronous)
+            {
                 JObject accepted = new JObject
                 {
                     ["status"] = "success",
@@ -423,60 +480,56 @@ namespace RhinoMCPPlugin
                 WriteMessage(stream, JsonConvert.SerializeObject(accepted), framed);
                 if (registration.Created)
                 {
-                    operationQueue.Enqueue(new QueuedBridgeOperation
-                    {
-                        Operation = registration.Operation,
-                        Command = (JObject)command.DeepClone()
-                    });
-                    operationSignal.Set();
+                    EnqueueOperation(registration.Operation, command);
                 }
                 return;
             }
 
-            // Execute command on Rhino's main thread. Posts are processed in
-            // order, so pipelined framed commands get their responses in the
-            // order the commands were sent.
-            RhinoApp.InvokeOnUiThread(new Action(() =>
+            // Synchronous callers retain the fast-path response shape. If Rhino's
+            // UI does not pick the request up promptly, return the operation record
+            // before the client's socket timeout instead of reporting an ambiguous
+            // failure while leaving an untracked delegate behind.
+            if (registration.Created)
             {
-                try
-                {
-                    JObject response = ExecuteCommand(command);
-                    string responseJson = JsonConvert.SerializeObject(response);
+                EnqueueOperation(registration.Operation, command);
+            }
 
-                    try
-                    {
-                        WriteMessage(stream, responseJson, framed);
-                    }
-                    catch
-                    {
-                        RhinoApp.WriteLine("Failed to send response - client disconnected");
-                    }
-                }
-                catch (Exception e)
+            registration.Operation.WaitForTerminal(SyncWaitMilliseconds);
+            JObject syncResponse = registration.Operation.ToCommandResponse();
+            if (!registration.Operation.IsTerminal && syncResponse["result"] is JObject pending)
+            {
+                pending["poll_after_ms"] = 500;
+                if (!(pending["modal_detected"]?.ToObject<bool>() ?? false))
                 {
-                    RhinoApp.WriteLine($"Error executing command: {e.Message}");
-                    try
-                    {
-                        JObject errorResponse = new JObject
-                        {
-                            ["status"] = "error",
-                            ["message"] = e.Message
-                        };
-
-                        WriteMessage(stream, errorResponse.ToString(), framed);
-                    }
-                    catch
-                    {
-                        // Ignore send errors
-                    }
+                    pending["message"] =
+                        "Rhino accepted the request but its UI thread is still busy. Poll get_operation_status; do not retry a mutating command.";
                 }
-            }));
+            }
+            WriteMessage(stream, JsonConvert.SerializeObject(syncResponse), framed);
+        }
+
+        private void EnqueueOperation(BridgeOperation operation, JObject command)
+        {
+            operationQueue.Enqueue(new QueuedBridgeOperation
+            {
+                Operation = operation,
+                Command = (JObject)command.DeepClone()
+            });
+            operationSignal.Set();
         }
 
         private JObject ExecuteOperationControlCommand(JObject command)
         {
             string cmdType = command["type"]?.ToString();
             JObject parameters = command["params"] as JObject ?? new JObject();
+            if (cmdType == "get_bridge_health")
+            {
+                return new JObject
+                {
+                    ["status"] = "success",
+                    ["result"] = GetBridgeHealth()
+                };
+            }
             string operationId = parameters["operation_id"]?.ToString();
             JObject result = cmdType == "cancel_operation"
                 ? BridgeOperationRegistry.Cancel(operationId)
@@ -500,15 +553,23 @@ namespace RhinoMCPPlugin
                     continue;
                 }
 
-                if (!queued.Operation.TryStart()) continue;
+                SetCurrentOperation(queued.Operation);
                 try
                 {
                     RhinoApp.InvokeOnUiThread(new Action(() =>
                     {
+                        // Stay genuinely queued until the UI delegate begins. A
+                        // cancellation received while Rhino is busy can therefore
+                        // prevent the mutation from ever executing.
+                        if (!queued.Operation.TryStart()) return;
                         JObject response = ExecuteCommand(queued.Command);
                         if (response?["status"]?.ToString() == "success")
                         {
                             queued.Operation.Complete(response["result"] as JObject ?? new JObject());
+                            if (queued.Operation.Command == "shutdown_rhino")
+                            {
+                                RhinoShutdownLifecycle.ScheduleExit();
+                            }
                         }
                         else
                         {
@@ -520,7 +581,115 @@ namespace RhinoMCPPlugin
                 {
                     queued.Operation.Fail(e.Message);
                 }
+                finally
+                {
+                    SetCurrentOperation(null);
+                }
             }
+        }
+
+        private void OnRhinoIdle(object sender, EventArgs e)
+        {
+            lock (healthLock)
+            {
+                lastUiHeartbeatUtc = DateTime.UtcNow;
+                try
+                {
+                    grasshopperReady = Grasshopper.Instances.ActiveCanvas != null;
+                }
+                catch
+                {
+                    grasshopperReady = false;
+                }
+            }
+        }
+
+        private void SetCurrentOperation(BridgeOperation operation)
+        {
+            lock (healthLock)
+            {
+                currentOperation = operation;
+            }
+        }
+
+        private JObject GetBridgeHealth()
+        {
+            DateTime now = DateTime.UtcNow;
+            DateTime? heartbeat;
+            bool ghReady;
+            BridgeOperation operation;
+            lock (healthLock)
+            {
+                heartbeat = lastUiHeartbeatUtc;
+                ghReady = grasshopperReady;
+                operation = currentOperation;
+            }
+
+            long? heartbeatAge = heartbeat.HasValue
+                ? Math.Max(0, (long)(now - heartbeat.Value).TotalMilliseconds)
+                : null;
+            JObject modal = RhinoModalDetector.TryGetModalWindow();
+            bool uiResponsive = operation == null &&
+                heartbeatAge.HasValue &&
+                heartbeatAge.Value <= UiBusyThresholdMilliseconds;
+
+            string readinessState;
+            if (RhinoShutdownLifecycle.IsShutdownInProgress)
+            {
+                readinessState = "shutdown_in_progress";
+            }
+            else if (modal != null)
+            {
+                readinessState = "blocked_by_modal";
+            }
+            else if (!ghReady && !uiResponsive)
+            {
+                readinessState = "grasshopper_loading";
+            }
+            else if (!uiResponsive)
+            {
+                readinessState = "rhino_ui_busy";
+            }
+            else if (ghReady)
+            {
+                readinessState = "grasshopper_ready";
+            }
+            else
+            {
+                readinessState = "listener_started";
+            }
+
+            return new JObject
+            {
+                ["state"] = readinessState,
+                ["listener_started"] = IsRunning(),
+                ["listener_started_at_utc"] = listenerStartedAtUtc.ToString("O"),
+                ["process_id"] = Process.GetCurrentProcess().Id,
+                ["rhino_ui_responsive"] = uiResponsive,
+                ["last_ui_heartbeat_utc"] = heartbeat?.ToString("O"),
+                ["ui_heartbeat_age_ms"] = heartbeatAge.HasValue
+                    ? JToken.FromObject(heartbeatAge.Value)
+                    : JValue.CreateNull(),
+                ["grasshopper_ready"] = ghReady,
+                ["shutdown_in_progress"] = RhinoShutdownLifecycle.IsShutdownInProgress,
+                ["shutdown_state"] = RhinoShutdownLifecycle.State,
+                ["queued_operation_count"] = operationQueue.Count,
+                ["current_operation"] = operation?.ToJson(includeResult: false),
+                ["modal_detected"] = modal != null,
+                ["modal"] = modal
+            };
+        }
+
+        private static int ReadBoundedEnvironmentInteger(
+            string name,
+            int defaultValue,
+            int minimum,
+            int maximum)
+        {
+            string value = System.Environment.GetEnvironmentVariable(name);
+            return int.TryParse(value, out int parsed)
+                ? Math.Max(minimum, Math.Min(maximum, parsed))
+                : defaultValue;
         }
 
         private static void WriteMessage(NetworkStream stream, string json, bool framed)
@@ -589,7 +758,7 @@ namespace RhinoMCPPlugin
             }
 
             var doc = RhinoDoc.ActiveDoc;
-            bool needsUndo = !entry.ReadOnly;
+            bool needsUndo = !entry.ReadOnly && entry.Undoable;
 
             // A change-delta or health report only makes sense for a mutating
             // command, and only when the client asked for it. Snapshot the

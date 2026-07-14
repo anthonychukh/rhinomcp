@@ -253,6 +253,8 @@ pattern with cylinders that have different heights."_
 | `gh_trigger_button` / `gh_set_toggle`                                 | Press buttons and operate Boolean Toggles         |
 | `gh_run_solution` / `gh_expire_solution`                              | Solve or expire the solution                      |
 | `get_operation_status` / `cancel_operation`                           | Poll or cancel tracked long-running work          |
+| `get_bridge_health`                                                   | Inspect listener, UI queue, modal, GH, and shutdown state |
+| `shutdown_rhino`                                                      | Acknowledged Rhino + Grasshopper shutdown          |
 | `gh_build_graph` / `gh_mutate_graph`                                  | Build or mutate a whole graph in one batched call |
 | `gh_get_graph` / `gh_clear_graph`                                     | Inspect or clear objects by graph id              |
 | `gh_bake_objects`                                                     | Bake component or selected output geometry        |
@@ -261,13 +263,28 @@ pattern with cylinders that have different heights."_
 
 </details>
 
-`gh_open_document`, `gh_run_solution`, and recomputing parameter/toggle/component
-updates use hybrid execution: they return the
+Every UI-thread request is registered before it is queued. A normal synchronous
+call still returns its original result when it finishes quickly; after
+`RHINO_MCP_SYNC_WAIT_MS`, it returns a pollable `operation_id` instead of an
+ambiguous socket timeout. `gh_create_document`, `gh_open_document`,
+`gh_save_document`, `gh_close_document`, `gh_run_solution`, and recomputing
+parameter/toggle/component updates also use explicit hybrid execution: they return the
 normal result when they finish quickly, or an `operation_id` when loading or
 solving continues. Poll with `get_operation_status`; on Windows it also reports
 recognized Rhino-owned modal windows as `waiting_for_user`. Grasshopper work is
 still serialized on Rhino's UI thread. Set `recompute=false` on parameter or
 toggle edits to batch changes before one explicit solution.
+
+Use `get_bridge_health` during startup instead of treating a document timeout as
+a dead listener. It runs outside Rhino's UI queue and reports readiness, the
+current operation, queue depth, modal state, and UI-heartbeat age.
+
+Use `shutdown_rhino` instead of executing `Environment.Exit` through a code tool.
+It acknowledges a tracked request first, applies one explicit `refuse`, `save`,
+or `discard` policy to Rhino and Grasshopper documents, attempts graceful exit,
+and treats the final disconnect as expected. Its force-exit watchdog is enabled
+only as part of this explicit destructive request and can be disabled with
+`force_after_ms=0`.
 
 ## How it works
 
@@ -304,6 +321,7 @@ authentication.
 | `RHINO_MCP_LONG_TIMEOUT`       | `300.0`     | Initial acknowledgement budget for tracked long-running commands; also supports older plugins that execute synchronously. |
 | `RHINO_MCP_CONTROL_TIMEOUT`    | `15.0`      | Timeout for operation status and cancellation calls, which bypass Rhino's UI queue. |
 | `RHINO_MCP_HYBRID_WAIT_MS`     | `5000`      | How long open/solve tools wait for a fast result before returning an operation id. |
+| `RHINO_MCP_SYNC_WAIT_MS`       | `5000`      | Plugin-side fast-path wait before any synchronous UI request returns an operation id (clamped below the socket timeout). |
 | `RHINO_MCP_DEBUG`              | `0`         | Verbose logging.                                                              |
 
 </details>

@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import Context
-from rhinomcp.server import get_rhino_connection, mcp
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp
 from typing import Any, List, Dict, Optional
 
 @mcp.tool()
@@ -110,6 +110,8 @@ def create_object(
     # Errors propagate so MCP clients see a real tool error instead of a
     # successful string starting with "Error ...".
     result = rhino.send_command("create_object", command_params)
+    if is_operation_status(result):
+        return result
     response: Dict[str, Any] = {
         "success": True,
         "id": result.get("id"),

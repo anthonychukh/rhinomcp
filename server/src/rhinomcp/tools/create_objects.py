@@ -1,5 +1,7 @@
 from mcp.server.fastmcp import Context
-from rhinomcp.server import get_rhino_connection, mcp, logger
+import json
+
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp, logger
 from typing import Any, List, Dict
 
 
@@ -78,6 +80,8 @@ def create_objects(
             command_params[key] = obj
 
         result = rhino.send_command("create_objects", command_params)
+        if is_operation_status(result):
+            return json.dumps(result, indent=2)
 
         success_count = result.get("success_count", 0)
         failure_count = result.get("failure_count", 0)

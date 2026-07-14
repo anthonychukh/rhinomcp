@@ -119,11 +119,21 @@ READONLY_RETRY_COMMANDS = {
     "gh_capture_preview",
     "gh_get_parameter_value",
     "get_operation_status",
+    "get_bridge_health",
 }
 
 
 class TransientRhinoConnectionError(ConnectionError):
     """A connected Rhino socket dropped while a command was in flight."""
+
+
+def is_operation_status(value: Any) -> bool:
+    """Return True for a tracked-operation record returned in lieu of a late result."""
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("operation_id"), str)
+        and isinstance(value.get("execution_state"), str)
+    )
 
 
 def rhino_startup_error_message(
@@ -389,7 +399,12 @@ class RhinoConnection:
                     }
 
                 try:
-                    validate_response(command_type, to_validate, raise_on_error=True)
+                    validation_command = (
+                        "get_operation_status"
+                        if is_operation_status(to_validate)
+                        else command_type
+                    )
+                    validate_response(validation_command, to_validate, raise_on_error=True)
                 except Exception as ve:
                     # Only a genuine validation verdict gets the warn/strict
                     # treatment. Anything else (unresolvable $ref, unreadable
@@ -429,8 +444,9 @@ class RhinoConnection:
             raise Exception(
                 f"Timeout waiting for Rhino response to '{command_type}' after "
                 f"{effective_timeout:g}s. "
-                "For long Grasshopper work, use the hybrid "
-                "operation mode and poll get_operation_status."
+                "The outcome is indeterminate because no operation id was returned; "
+                "do not blindly retry a mutating request. Update the Rhino plug-in "
+                "to a tracked-dispatch build or use an explicit async request id."
             )
         except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
             logger.error(f"Socket connection error: {str(e)}")

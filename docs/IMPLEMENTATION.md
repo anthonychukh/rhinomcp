@@ -372,6 +372,7 @@ Main file: `server/src/rhinomcp/server.py`
 | `RHINO_MCP_LONG_TIMEOUT` | `300.0`           | Acknowledgement/fallback timeout for hybrid long-running commands.          |
 | `RHINO_MCP_CONTROL_TIMEOUT` | `15.0`         | Timeout for out-of-band operation status and cancellation calls.            |
 | `RHINO_MCP_HYBRID_WAIT_MS` | `5000`          | Fast-path wait before a hybrid wrapper returns an operation id.              |
+| `RHINO_MCP_SYNC_WAIT_MS`   | `5000`          | Plugin fast-path wait before a synchronous UI request returns an operation id. |
 | `RHINO_MCP_PERCEPTION`   | unset             | Set truthy to attach `_delta` (what changed) and `_health` (validity of created geometry) blocks to mutating-command results. |
 | `RHINO_MCP_DEBUG`        | unset             | Enables verbose logging when truthy.                                        |
 | `RHINO_MCP_LOG_LEVEL`    | `INFO` or `DEBUG` | Explicit Python logging level.                                              |
@@ -421,9 +422,12 @@ Main files:
 ### TCP Server
 
 `RhinoMCPServer` listens on loopback, accepts TCP clients, parses JSON command
-objects, and executes every command through `RhinoApp.InvokeOnUiThread(...)`.
-This is required because RhinoCommon and Grasshopper document APIs must run on
-Rhino's main thread.
+objects, and registers every UI-dependent request before a serialized worker
+executes it through `RhinoApp.InvokeOnUiThread(...)`. This is required because
+RhinoCommon and Grasshopper document APIs must run on Rhino's main thread.
+`describe_capabilities`, `get_bridge_health`, `get_operation_status`, and
+`cancel_operation` bypass that queue because their implementations do not touch
+Rhino document state.
 
 ### Tracked Operations
 
@@ -433,18 +437,42 @@ order and invokes each handler through `RhinoApp.InvokeOnUiThread(...)`; tracked
 execution improves responsiveness but does not run Rhino or Grasshopper work in
 parallel.
 
-`gh_open_document`, `gh_run_solution`, and recomputing parameter, toggle, and
-component updates use a hybrid wrapper by default. They
+Synchronous commands use the same registry and queue. They preserve the legacy
+result shape for the fast path, but after `RHINO_MCP_SYNC_WAIT_MS` return the
+operation status with `operation_id`, `request_id`, process id, and polling
+guidance. The original operation remains trackable. A queued cancellation stays
+queued until the UI delegate actually starts, so cancellation can reliably
+prevent a late mutation.
+
+Grasshopper document lifecycle calls, `gh_run_solution`, and recomputing
+parameter, toggle, and component updates use a hybrid wrapper by default. They
 wait up to `wait_ms` for the fast case and otherwise return an `operation_id`.
 `get_operation_status` and `cancel_operation` bypass the UI queue, so they still
 respond while Grasshopper is solving or an IO dialog owns the UI thread. On
 Windows, operation status reports a visible modal owned by Rhino as
 `waiting_for_user`; it never dismisses the window automatically.
 
-Each tracked request has a `request_id`. Reusing it returns the existing
-operation instead of executing a timed-out mutation twice. Completed operation
+Each tracked request has a `request_id`. Reusing it with the same command and
+payload returns the existing operation instead of executing a timed-out mutation
+twice; reusing it with a different payload is rejected. Completed operation
 records are retained for 15 minutes. Cancellation is immediate for queued work
 and cooperative for a running Grasshopper solution.
+
+### Bridge Health and Shutdown
+
+`get_bridge_health` is an out-of-band readiness endpoint. Rhino's `Idle` event
+updates a UI heartbeat, while the operation worker exposes the current command
+and queue depth. The resulting state distinguishes listener start, Rhino UI
+busy, Grasshopper loading/ready, modal blocking, and shutdown in progress.
+
+`shutdown_rhino` is always submitted as an idempotent async operation. The
+acknowledgement is written before UI dispatch. On the UI thread it preflights all
+modified Rhino and Grasshopper documents using an explicit `refuse`, `save`, or
+`discard` policy, closes Grasshopper documents without prompts, marks the
+operation complete, and only then schedules `RhinoApp.Exit()`. A bounded
+background watchdog calls `Environment.Exit(0)` if graceful shutdown fails; the
+caller can disable it with `force_after_ms=0`. The external Python wrapper treats
+the resulting process disconnect as a successful terminal outcome.
 
 ### Wire Framing
 
@@ -840,6 +868,9 @@ Defined in `plugin/rhinomcp.csproj`:
 - Rhino and Grasshopper operations run on Rhino's UI thread.
 - Tracked operations are still serialized; the control plane is asynchronous,
   not the Rhino/Grasshopper execution itself.
+- A synchronous timeout from an older plugin is indeterminate. Current builds
+  return an operation id before the socket deadline, so clients should poll and
+  never blindly retry a mutating request.
 - Read-only C# commands should use `[McpCommand(..., ReadOnly = true)]`.
 - Mutating C# commands get Rhino undo records automatically through the dispatcher.
 - Batch Grasshopper APIs suppress intermediate round trips and solve once when

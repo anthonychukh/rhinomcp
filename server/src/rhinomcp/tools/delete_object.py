@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 from mcp.server.fastmcp import Context
 from mcp.types import ToolAnnotations
-from rhinomcp.server import get_rhino_connection, mcp
+from rhinomcp.server import get_rhino_connection, is_operation_status, mcp
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True, idempotentHint=True))
@@ -32,6 +32,8 @@ def delete_object(ctx: Context, id: str = None, name: str = None, all: bool = No
     if all: commandParams["all"] = True
 
     result = rhino.send_command("delete_object", commandParams)
+    if is_operation_status(result):
+        return result
 
     if all:
         count = result.get("count")

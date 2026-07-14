@@ -12,11 +12,32 @@ from pathlib import Path
 try:
     import jsonschema
     from jsonschema import Draft202012Validator
+    from referencing import Registry, Resource
+    from referencing.jsonschema import DRAFT202012
 except ImportError:
     print("Please install jsonschema: pip install jsonschema")
     sys.exit(1)
 
 CONTRACTS_DIR = Path(__file__).parent
+
+
+def build_contract_registry() -> Registry:
+    """Register contract schemas so sibling-file $refs resolve in tests."""
+    resources = []
+    for rel_dir in ("commands", "responses", "common"):
+        for path in sorted((CONTRACTS_DIR / rel_dir).glob("*.json")):
+            with open(path) as f:
+                resource = Resource.from_contents(
+                    json.load(f), default_specification=DRAFT202012
+                )
+            resources.append((path.name, resource))
+            if rel_dir == "common":
+                resources.append((f"common/{path.name}", resource))
+                resources.append((f"../common/{path.name}", resource))
+    return Registry().with_resources(resources)
+
+
+CONTRACT_REGISTRY = build_contract_registry()
 
 
 def load_schema_with_refs(schema_path: str) -> dict:
@@ -51,7 +72,7 @@ def validate(schema_path: str, instance: dict) -> bool:
     """Validate an instance against a schema."""
     try:
         schema = load_schema_with_refs(schema_path)
-        validator = Draft202012Validator(schema)
+        validator = Draft202012Validator(schema, registry=CONTRACT_REGISTRY)
 
         errors = list(validator.iter_errors(instance))
         if errors:
@@ -247,6 +268,8 @@ def test_new_commands():
         ("commands/section_profile.json", {"name": "Wall", "profile": {"axis": "Z", "count": 5, "start": 0, "end": 30}}),
         ("commands/get_operation_status.json", {"operation_id": GUID, "include_result": True}),
         ("commands/cancel_operation.json", {"operation_id": GUID}),
+        ("commands/get_bridge_health.json", {}),
+        ("commands/shutdown_rhino.json", {"save_changes": "discard", "force_after_ms": 15000}),
         ("commands/gh_create_document.json", {"new_if_missing": True, "make_active": True, "open_canvas": True}),
         ("commands/gh_open_document.json", {"path": "C:/Temp/example.gh", "make_active": True, "open_canvas": True}),
         ("commands/gh_save_document.json", {"path": "C:/Temp/example.ghx", "overwrite": True}),
@@ -512,6 +535,7 @@ def test_responses():
     operation_status = {
         "operation_id": "12345678-1234-1234-1234-123456789012",
         "request_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "process_id": 1234,
         "command": "gh_open_document",
         "state": "waiting_for_user",
         "execution_state": "running",
@@ -525,6 +549,26 @@ def test_responses():
         "modal": {"title": "Grasshopper", "window_class": "#32770"}
     }
     if not validate("responses/operation_status.json", operation_status):
+        all_passed = False
+
+    print("  bridge_health:")
+    bridge_health = {
+        "state": "rhino_ui_busy",
+        "listener_started": True,
+        "listener_started_at_utc": "2026-07-13T00:00:00Z",
+        "process_id": 1234,
+        "rhino_ui_responsive": False,
+        "last_ui_heartbeat_utc": "2026-07-13T00:00:01Z",
+        "ui_heartbeat_age_ms": 5000,
+        "grasshopper_ready": False,
+        "shutdown_in_progress": False,
+        "shutdown_state": "not_requested",
+        "queued_operation_count": 1,
+        "current_operation": operation_status,
+        "modal_detected": False,
+        "modal": None,
+    }
+    if not validate("responses/bridge_health.json", bridge_health):
         all_passed = False
 
     # Layer info
@@ -847,6 +891,8 @@ def test_invalid_examples():
         ("commands/section_profile.json", {"id": "12345678-1234-1234-1234-123456789012", "plane": {"axis": "Z", "value": 0}, "bogus": 1}, "section_profile unknown field"),
         ("commands/get_operation_status.json", {}, "get_operation_status missing id"),
         ("commands/cancel_operation.json", {"operation_id": "bad"}, "cancel_operation bad id"),
+        ("commands/get_bridge_health.json", {"wait": True}, "get_bridge_health unknown field"),
+        ("commands/shutdown_rhino.json", {"save_changes": "prompt"}, "shutdown_rhino interactive policy"),
         ("commands/gh_create_document.json", {"template_path": "example.gh"}, "gh_create_document unknown field"),
         ("commands/gh_open_document.json", {"path": "example.txt"}, "gh_open_document wrong extension"),
         ("commands/gh_save_document.json", {"path": ""}, "gh_save_document empty path"),
@@ -1047,6 +1093,7 @@ def test_protocol_envelope():
         "loft", "extrude_curve", "sweep1", "offset_curve", "pipe",
         "project_curve", "intersect_curves", "split_curve",
         "run_command", "get_commands", "get_operation_status", "cancel_operation",
+        "get_bridge_health", "shutdown_rhino",
         "gh_create_document",
         "gh_open_document", "gh_save_document", "gh_close_document",
         "gh_get_document_info", "gh_search_components",
